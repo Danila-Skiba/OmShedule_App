@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../constants/app_colors.dart';
 
-/// Нижняя навигация (эквивалент MobileLayout.tsx с Outlet и bottom nav)
+/// Нижняя навигация
 class MobileLayout extends StatelessWidget {
   final Widget child;
 
@@ -44,36 +44,44 @@ class MobileLayout extends StatelessWidget {
             ),
             child: SafeArea(
               top: false,
-              child: SizedBox(
-                height: 64,
+              child: Container(
+                height: 56, 
+                padding: const EdgeInsets.symmetric(horizontal: 12), 
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
+                  crossAxisAlignment: CrossAxisAlignment.center,
                   children: _navItems.map((item) {
                     final active = isActive(item.path);
-                    return InkWell(
-                      onTap: () => context.go(item.path),
-                      borderRadius: BorderRadius.circular(8),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              item.icon,
-                              size: 24,
-                              color: active ? AppColors.primary : AppColors.textSecondary,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              item.label,
-                              style: TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
+                    return Expanded(
+                      child: InkWell(
+                        onTap: () => context.go(item.path),
+                        borderRadius: BorderRadius.circular(8),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 8),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(
+                                item.icon,
+                                size: 20,
                                 color: active ? AppColors.primary : AppColors.textSecondary,
                               ),
-                            ),
-                          ],
+                              const SizedBox(height: 2), 
+                              Flexible(
+                                child: Text(
+                                  item.label,
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 1,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.w500,
+                                    color: active ? AppColors.primary : AppColors.textSecondary,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     );

@@ -316,7 +316,7 @@ class _MessageBubble extends StatelessWidget {
                       bottomRight: Radius.circular(isUser ? 4 : 16),
                     ),
                     border: isUser ? null : Border.all(color: AppColors.border),
-                    boxShadow: [BoxShadow(color: Color.fromARGB(255, 220, 220, 220), blurRadius: 2, offset: Offset(0, 2))],
+                    boxShadow: const [BoxShadow(color: Color.fromARGB(255, 220, 220, 220), blurRadius: 2, offset: Offset(0, 2))],
                   ),
                   child: Text(
                     message.text,

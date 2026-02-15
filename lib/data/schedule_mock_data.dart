@@ -54,4 +54,49 @@ class ScheduleMockData {
     if (roomId == null || roomId.isEmpty) return [];
     return allLessons.where((l) => l.room == roomId).toList();
   }
+
+  /// Занятия по нескольким группам
+  static List<Lesson> lessonsForGroups(Set<String> ids) {
+    if (ids.isEmpty) return [];
+    return allLessons.where((l) => l.groupId != null && ids.contains(l.groupId)).toList();
+  }
+
+  /// Занятия по нескольким преподавателям
+  static List<Lesson> lessonsForTeachers(Set<String> names) {
+    if (names.isEmpty) return [];
+    return allLessons.where((l) => names.contains(l.teacher)).toList();
+  }
+
+  /// Занятия по нескольким аудиториям
+  static List<Lesson> lessonsForRooms(Set<String> ids) {
+    if (ids.isEmpty) return [];
+    return allLessons.where((l) => ids.contains(l.room)).toList();
+  }
+
+  /// Объединение занятий по выбранным фильтрам (хотя бы один выбран в категории)
+  static List<Lesson> lessonsFiltered({
+    Set<String>? groupIds,
+    Set<String>? teacherNames,
+    Set<String>? roomIds,
+  }) {
+    final list = <Lesson>[];
+    final seen = <String>{};
+    if (groupIds != null && groupIds.isNotEmpty) {
+      for (final l in lessonsForGroups(groupIds)) {
+        if (seen.add(l.id)) list.add(l);
+      }
+    }
+    if (teacherNames != null && teacherNames.isNotEmpty) {
+      for (final l in lessonsForTeachers(teacherNames)) {
+        if (seen.add(l.id)) list.add(l);
+      }
+    }
+    if (roomIds != null && roomIds.isNotEmpty) {
+      for (final l in lessonsForRooms(roomIds)) {
+        if (seen.add(l.id)) list.add(l);
+      }
+    }
+    if (list.isEmpty) return allLessons;
+    return list..sort((a, b) => a.dayOfWeek != b.dayOfWeek ? a.dayOfWeek.compareTo(b.dayOfWeek) : a.timeStart.compareTo(b.timeStart));
+  }
 }

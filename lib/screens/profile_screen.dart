@@ -167,9 +167,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Студент',
             subtitle: _defaultGroupId ?? 'МО-231',
             selected: _role == 'student',
-            onTap: () async {
+            onTap: () {
               setState(() => _role = 'student');
-              await SettingsService.setProfileRole('student');
+              SettingsService.setProfileRole('student');
             },
           ),
           const SizedBox(height: 8),
@@ -178,9 +178,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
             title: 'Преподаватель',
             subtitle: _defaultTeacherName ?? 'Иванов И.И.',
             selected: _role == 'teacher',
-            onTap: () async {
+            onTap: () {
               setState(() => _role = 'teacher');
-              await SettingsService.setProfileRole('teacher');
+              SettingsService.setProfileRole('teacher');
             },
           ),
           const SizedBox(height: 16),
@@ -191,10 +191,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               value: _defaultGroupId ?? ScheduleMockData.groupIds.first,
               isExpanded: true,
               items: ScheduleMockData.groupIds.map((id) => DropdownMenuItem(value: id, child: Text(id))).toList(),
-              onChanged: (v) async {
+              onChanged: (v) {
                 if (v == null) return;
                 setState(() => _defaultGroupId = v);
-                await SettingsService.setDefaultGroupId(v);
+                SettingsService.setDefaultGroupId(v);
               },
             ),
           ],
@@ -205,10 +205,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
               value: _defaultTeacherName ?? ScheduleMockData.teacherNames.first,
               isExpanded: true,
               items: ScheduleMockData.teacherNames.map((n) => DropdownMenuItem(value: n, child: Text(n))).toList(),
-              onChanged: (v) async {
+              onChanged: (v) {
                 if (v == null) return;
                 setState(() => _defaultTeacherName = v);
-                await SettingsService.setDefaultTeacherId(v);
+                SettingsService.setDefaultTeacherId(v);
               },
             ),
           ],

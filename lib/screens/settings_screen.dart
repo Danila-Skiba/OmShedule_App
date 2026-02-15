@@ -139,9 +139,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   segments: const [
                     ButtonSegment(value: ThemeMode.light, label: Text('Светлая'), icon: Icon(Icons.light_mode_rounded)),
                     ButtonSegment(value: ThemeMode.dark, label: Text('Тёмная'), icon: Icon(Icons.dark_mode_rounded)),
-                    ButtonSegment(value: ThemeMode.system, label: Text('Системная'), icon: Icon(Icons.settings_brightness_rounded)),
                   ],
-                  selected: {themeMode},
+                  selected: {themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light},
                   onSelectionChanged: (Set<ThemeMode> s) {
                     themeNotifier.setThemeMode(s.first);
                   },

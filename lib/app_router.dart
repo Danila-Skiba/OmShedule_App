@@ -1,11 +1,13 @@
 import 'package:go_router/go_router.dart';
 import 'layouts/mobile_layout.dart';
 import 'screens/dashboard_screen.dart';
+import 'screens/filter_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/maps_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/settings_screen.dart';
+import 'package:flutter/material.dart';
 
 /// Маршрутизация (эквивалент routes.tsx createBrowserRouter)
 final GoRouter appRouter = GoRouter(
@@ -25,6 +27,17 @@ final GoRouter appRouter = GoRouter(
           pageBuilder: (context, state) => const NoTransitionPage(
             child: ScheduleScreen(),
           ),
+          routes: [
+            GoRoute(
+              path: 'filter',
+              pageBuilder: (context, state) {
+                final extra = state.extra as FilterResult?;
+                return MaterialPage<void>(
+                  child: FilterScreen(initial: extra ?? const FilterResult()),
+                );
+              },
+            ),
+          ],
         ),
         GoRoute(
           path: '/maps',

@@ -5,9 +5,9 @@ import 'app_router.dart';
 import 'core/services/settings_service.dart';
 import 'core/theme/theme_notifier.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  await SettingsService.init();
+  SettingsService.init();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
@@ -32,7 +32,7 @@ class OmstuScheduleApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             theme: themeNotifier.lightTheme(),
             darkTheme: themeNotifier.darkTheme(),
-            themeMode: themeNotifier.themeMode,
+            themeMode: themeNotifier.themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light,
             routerConfig: appRouter,
           );
         },

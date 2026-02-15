@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import '../constants/app_colors.dart';
 import '../core/services/settings_service.dart';
-import '../core/widgets/base_container.dart';
 import '../data/schedule_mock_data.dart';
 import '../models/lesson.dart';
 import '../models/schedule_type.dart';
+import 'filter_screen.dart';
 
 /// Период: 17–24 февраля
 const _periodStart = '17 фев';
@@ -21,13 +22,13 @@ class ScheduleScreen extends StatefulWidget {
 class _ScheduleScreenState extends State<ScheduleScreen> {
   String _view = 'today'; // today | week
   late ScheduleType _scheduleType;
-  String? _selectedGroupId;
-  String? _selectedTeacherName;
-  String? _selectedRoomId;
+  Set<String> _selectedGroupIds = {};
+  Set<String> _selectedTeacherNames = {};
+  Set<String> _selectedRoomIds = {};
   String _searchQuery = '';
   bool _showSearch = false;
-  int _selectedDay = 1; // 1 = ПН … 6 = СБ (для "Сегодня" + свайп по дням)
-  int _weekOffset = 0; // сдвиг недели для режима "Неделя"
+  int _selectedDay = 1;
+  int _weekOffset = 0;
   Lesson? _selectedLesson;
 
   final _newEvent = _NewEventForm();
@@ -43,30 +44,31 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final role = SettingsService.getProfileRole();
     if (role == 'student') {
       _scheduleType = ScheduleType.group;
-      _selectedGroupId = SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first;
-      _selectedTeacherName = null;
-      _selectedRoomId = null;
+      final g = SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first;
+      _selectedGroupIds = {g};
+      _selectedTeacherNames = {};
+      _selectedRoomIds = {};
     } else {
       _scheduleType = ScheduleType.teacher;
-      _selectedTeacherName = SettingsService.getDefaultTeacherId() ?? ScheduleMockData.teacherNames.first;
-      _selectedGroupId = null;
-      _selectedRoomId = null;
+      final t = SettingsService.getDefaultTeacherId() ?? ScheduleMockData.teacherNames.first;
+      _selectedTeacherNames = {t};
+      _selectedGroupIds = {};
+      _selectedRoomIds = {};
     }
   }
 
+  FilterResult get _currentFilterResult => FilterResult(
+    selectedGroupIds: _selectedGroupIds,
+    selectedTeacherNames: _selectedTeacherNames,
+    selectedRoomIds: _selectedRoomIds,
+  );
+
   List<Lesson> get _filteredLessons {
-    List<Lesson> list;
-    switch (_scheduleType) {
-      case ScheduleType.group:
-        list = ScheduleMockData.lessonsForGroup(_selectedGroupId);
-        break;
-      case ScheduleType.teacher:
-        list = ScheduleMockData.lessonsForTeacher(_selectedTeacherName);
-        break;
-      case ScheduleType.audience:
-        list = ScheduleMockData.lessonsForRoom(_selectedRoomId);
-        break;
-    }
+    List<Lesson> list = ScheduleMockData.lessonsFiltered(
+      groupIds: _selectedGroupIds.isEmpty ? null : _selectedGroupIds,
+      teacherNames: _selectedTeacherNames.isEmpty ? null : _selectedTeacherNames,
+      roomIds: _selectedRoomIds.isEmpty ? null : _selectedRoomIds,
+    );
     if (_searchQuery.isEmpty) return list;
     final q = _searchQuery.toLowerCase();
     return list.where((l) {
@@ -92,7 +94,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           CustomScrollView(
             slivers: [
               SliverToBoxAdapter(child: _buildHeader()),
-              SliverToBoxAdapter(child: _buildTabs()),
               SliverToBoxAdapter(child: _buildSegmentedControl()),
               SliverToBoxAdapter(child: _buildCalendarStrip()),
               SliverPadding(
@@ -140,7 +141,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       children: [
                         IconButton(
                           icon: const Icon(Icons.filter_list_rounded, color: Colors.white, size: 20),
-                          onPressed: _openFiltersSheet,
+                          onPressed: _openFilterScreen,
                         ),
                         IconButton(
                           icon: Icon(
@@ -178,65 +179,18 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Widget _buildTabs() {
-    return Container(
-      color: Theme.of(context).cardColor,
-      child: Row(
-        children: [
-          _TabChip(
-            label: ScheduleType.group.label,
-            active: _scheduleType == ScheduleType.group,
-            onTap: () => setState(() {
-              _scheduleType = ScheduleType.group;
-              _selectedGroupId = _selectedGroupId ?? ScheduleMockData.groupIds.first;
-              _selectedTeacherName = null;
-              _selectedRoomId = null;
-            }),
-          ),
-          _TabChip(
-            label: ScheduleType.teacher.label,
-            active: _scheduleType == ScheduleType.teacher,
-            onTap: () => setState(() {
-              _scheduleType = ScheduleType.teacher;
-              _selectedTeacherName = _selectedTeacherName ?? ScheduleMockData.teacherNames.first;
-              _selectedGroupId = null;
-              _selectedRoomId = null;
-            }),
-          ),
-          _TabChip(
-            label: ScheduleType.audience.label,
-            active: _scheduleType == ScheduleType.audience,
-            onTap: () => setState(() {
-              _scheduleType = ScheduleType.audience;
-              _selectedRoomId = _selectedRoomId ?? ScheduleMockData.roomIds.first;
-              _selectedGroupId = null;
-              _selectedTeacherName = null;
-            }),
-          ),
-        ],
-      ),
+  Future<void> _openFilterScreen() async {
+    final result = await context.push<FilterResult?>(
+      '/schedule/filter',
+      extra: _currentFilterResult,
     );
-  }
-
-  void _openFiltersSheet() {
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => _FiltersBottomSheet(
-        scheduleType: _scheduleType,
-        selectedGroupId: _selectedGroupId,
-        selectedTeacherName: _selectedTeacherName,
-        selectedRoomId: _selectedRoomId,
-        onApply: (type, groupId, teacherName, roomId) {
-          setState(() {
-            _scheduleType = type;
-            _selectedGroupId = groupId;
-            _selectedTeacherName = teacherName;
-            _selectedRoomId = roomId;
-          });
-          Navigator.pop(ctx);
-        },
-      ),
-    );
+    if (result != null && mounted) {
+      setState(() {
+        _selectedGroupIds = result.selectedGroupIds;
+        _selectedTeacherNames = result.selectedTeacherNames;
+        _selectedRoomIds = result.selectedRoomIds;
+      });
+    }
   }
 
   Widget _buildSegmentedControl() {
@@ -478,122 +432,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           // TODO: save event
           Navigator.of(ctx).pop();
         },
-      ),
-    );
-  }
-}
-
-class _TabChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _TabChip({required this.label, required this.active, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: InkWell(
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 12),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w600,
-              color: active ? AppColors.primary : AppColors.textSecondary,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FiltersBottomSheet extends StatefulWidget {
-  final ScheduleType scheduleType;
-  final String? selectedGroupId;
-  final String? selectedTeacherName;
-  final String? selectedRoomId;
-  final void Function(ScheduleType type, String? groupId, String? teacherName, String? roomId) onApply;
-
-  const _FiltersBottomSheet({
-    required this.scheduleType,
-    required this.selectedGroupId,
-    required this.selectedTeacherName,
-    required this.selectedRoomId,
-    required this.onApply,
-  });
-
-  @override
-  State<_FiltersBottomSheet> createState() => _FiltersBottomSheetState();
-}
-
-class _FiltersBottomSheetState extends State<_FiltersBottomSheet> {
-  late ScheduleType _type;
-  late String? _groupId;
-  late String? _teacherName;
-  late String? _roomId;
-
-  @override
-  void initState() {
-    super.initState();
-    _type = widget.scheduleType;
-    _groupId = widget.selectedGroupId;
-    _teacherName = widget.selectedTeacherName;
-    _roomId = widget.selectedRoomId;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return BaseContainer(
-      margin: const EdgeInsets.all(16),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text('Фильтры', style: Theme.of(context).textTheme.titleMedium),
-          const SizedBox(height: 16),
-          ...ScheduleType.values.map((t) => RadioListTile<ScheduleType>(
-            title: Text(t.label),
-            value: t,
-            groupValue: _type,
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() {
-                _type = v;
-                if (v == ScheduleType.group) _groupId = _groupId ?? ScheduleMockData.groupIds.first;
-                if (v == ScheduleType.teacher) _teacherName = _teacherName ?? ScheduleMockData.teacherNames.first;
-                if (v == ScheduleType.audience) _roomId = _roomId ?? ScheduleMockData.roomIds.first;
-              });
-            },
-          )),
-          if (_type == ScheduleType.group)
-            DropdownButton<String>(
-              value: _groupId ?? ScheduleMockData.groupIds.first,
-              items: ScheduleMockData.groupIds.map((id) => DropdownMenuItem(value: id, child: Text(id))).toList(),
-              onChanged: (v) => setState(() => _groupId = v),
-            ),
-          if (_type == ScheduleType.teacher)
-            DropdownButton<String>(
-              value: _teacherName ?? ScheduleMockData.teacherNames.first,
-              items: ScheduleMockData.teacherNames.map((n) => DropdownMenuItem(value: n, child: Text(n))).toList(),
-              onChanged: (v) => setState(() => _teacherName = v),
-            ),
-          if (_type == ScheduleType.audience)
-            DropdownButton<String>(
-              value: _roomId ?? ScheduleMockData.roomIds.first,
-              items: ScheduleMockData.roomIds.map((id) => DropdownMenuItem(value: id, child: Text(id))).toList(),
-              onChanged: (v) => setState(() => _roomId = v),
-            ),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: () => widget.onApply(_type, _groupId, _teacherName, _roomId),
-            child: const Text('Применить'),
-          ),
-        ],
       ),
     );
   }

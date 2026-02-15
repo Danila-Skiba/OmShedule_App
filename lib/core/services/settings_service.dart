@@ -1,74 +1,69 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
-/// Ключи SharedPreferences
+/// Ключи настроек (хранение в памяти)
 abstract class PrefsKeys {
-  static const themeMode = 'theme_mode'; // light, dark, system
-  static const accentColorValue = 'accent_color_value'; // int (Color.value)
-  static const profileRole = 'profile_role'; // student, teacher
+  static const themeMode = 'theme_mode';
+  static const accentColorValue = 'accent_color_value';
+  static const profileRole = 'profile_role';
   static const defaultGroupId = 'default_group_id';
   static const defaultTeacherId = 'default_teacher_id';
 }
 
-/// Сервис настроек (тема, профиль)
+/// Сервис настроек в памяти (без CocoaPods/SharedPreferences)
 class SettingsService {
-  static SharedPreferences? _prefs;
+  static final Map<String, Object> _store = {};
 
-  static Future<void> init() async {
-    _prefs ??= await SharedPreferences.getInstance();
-  }
-
-  static SharedPreferences get prefs {
-    if (_prefs == null) throw StateError('SettingsService.init() not called');
-    return _prefs!;
+  static void init() {
+    // Значения по умолчанию при первом запуске
+    _store.putIfAbsent(PrefsKeys.themeMode, () => 'light');
+    _store.putIfAbsent(PrefsKeys.profileRole, () => 'student');
   }
 
   static ThemeMode getThemeMode() {
-    final v = prefs.getString(PrefsKeys.themeMode) ?? 'system';
+    final v = _store[PrefsKeys.themeMode] as String? ?? 'light';
     switch (v) {
-      case 'light': return ThemeMode.light;
-      case 'dark': return ThemeMode.dark;
-      default: return ThemeMode.system;
+      case 'dark':
+        return ThemeMode.dark;
+      default:
+        return ThemeMode.light;
     }
   }
 
-  static Future<void> setThemeMode(ThemeMode mode) async {
-    final v = mode == ThemeMode.light ? 'light' : mode == ThemeMode.dark ? 'dark' : 'system';
-    await prefs.setString(PrefsKeys.themeMode, v);
+  static void setThemeMode(ThemeMode mode) {
+    _store[PrefsKeys.themeMode] = mode == ThemeMode.dark ? 'dark' : 'light';
   }
 
   static Color? getAccentColor() {
-    final v = prefs.getInt(PrefsKeys.accentColorValue);
+    final v = _store[PrefsKeys.accentColorValue] as int?;
     return v != null ? Color(v) : null;
   }
 
-  static Future<void> setAccentColor(Color? color) async {
+  static void setAccentColor(Color? color) {
     if (color == null) {
-      await prefs.remove(PrefsKeys.accentColorValue);
+      _store.remove(PrefsKeys.accentColorValue);
     } else {
-      await prefs.setInt(PrefsKeys.accentColorValue, color.value);
+      _store[PrefsKeys.accentColorValue] = color.value;
     }
   }
 
-  static String getProfileRole() => prefs.getString(PrefsKeys.profileRole) ?? 'student';
-  static Future<void> setProfileRole(String role) => prefs.setString(PrefsKeys.profileRole, role);
+  static String getProfileRole() => _store[PrefsKeys.profileRole] as String? ?? 'student';
+  static void setProfileRole(String role) => _store[PrefsKeys.profileRole] = role;
 
-  static String? getDefaultGroupId() => prefs.getString(PrefsKeys.defaultGroupId);
-  static Future<void> setDefaultGroupId(String? id) async {
+  static String? getDefaultGroupId() => _store[PrefsKeys.defaultGroupId] as String?;
+  static void setDefaultGroupId(String? id) {
     if (id == null) {
-      await prefs.remove(PrefsKeys.defaultGroupId);
+      _store.remove(PrefsKeys.defaultGroupId);
     } else {
-      await prefs.setString(PrefsKeys.defaultGroupId, id);
+      _store[PrefsKeys.defaultGroupId] = id;
     }
   }
 
-  static String? getDefaultTeacherId() => prefs.getString(PrefsKeys.defaultTeacherId);
-  static Future<void> setDefaultTeacherId(String? id) async {
+  static String? getDefaultTeacherId() => _store[PrefsKeys.defaultTeacherId] as String?;
+  static void setDefaultTeacherId(String? id) {
     if (id == null) {
-      await prefs.remove(PrefsKeys.defaultTeacherId);
+      _store.remove(PrefsKeys.defaultTeacherId);
     } else {
-      await prefs.setString(PrefsKeys.defaultTeacherId, id);
+      _store[PrefsKeys.defaultTeacherId] = id;
     }
   }
 }

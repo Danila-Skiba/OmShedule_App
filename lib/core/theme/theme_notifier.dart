@@ -2,9 +2,9 @@ import 'package:flutter/material.dart';
 import '../services/settings_service.dart';
 import 'app_theme.dart';
 
-/// Управление темой приложения (светлая/тёмная/системная + акцент)
+/// Управление темой приложения (только светлая/тёмная, без системной)
 class ThemeNotifier extends ChangeNotifier {
-  ThemeMode _themeMode = ThemeMode.system;
+  ThemeMode _themeMode = ThemeMode.light;
   Color? _accentColor;
 
   ThemeMode get themeMode => _themeMode;
@@ -16,9 +16,11 @@ class ThemeNotifier extends ChangeNotifier {
   }
 
   void setThemeMode(ThemeMode mode) {
-    if (_themeMode == mode) return;
-    _themeMode = mode;
-    SettingsService.setThemeMode(mode);
+    // Только light или dark, без system
+    final resolved = mode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light;
+    if (_themeMode == resolved) return;
+    _themeMode = resolved;
+    SettingsService.setThemeMode(resolved);
     notifyListeners();
   }
 
