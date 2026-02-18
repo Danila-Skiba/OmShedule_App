@@ -11,7 +11,7 @@ class MobileLayout extends StatelessWidget {
   static const List<_NavItem> _navItems = [
     _NavItem(path: '/', label: 'Главная', icon: Icons.home_rounded),
     _NavItem(path: '/schedule', label: 'Расписание', icon: Icons.calendar_today_rounded),
-    _NavItem(path: '/maps', label: 'Карты', icon: Icons.map_rounded),
+    // _NavItem(path: '/maps', label: 'Карты', icon: Icons.map_rounded),
     _NavItem(path: '/profile', label: 'Профиль', icon: Icons.person_rounded),
     _NavItem(path: '/chat', label: 'Помощник', icon: Icons.chat_bubble_rounded),
   ];

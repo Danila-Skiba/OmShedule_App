@@ -317,25 +317,37 @@ class DashboardScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildNewsSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 4, bottom: 12),
-          child: Text(
-            'Новости ОмГТУ',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: AppColors.textPrimary,
-            ),
+Widget _buildNewsSection() {
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      const Padding(
+        padding: EdgeInsets.only(left: 4, bottom: 12),
+        child: Text(
+          'Новости ОмГТУ',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.bold,
+            color: AppColors.textPrimary,
           ),
         ),
-        ...MockData.news.map((item) => _NewsCard(news: item)),
-      ],
-    );
-  }
+      ),
+      Container(
+        height: 200,
+        margin: const EdgeInsets.symmetric(vertical: 4),
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          itemCount: MockData.news.length,
+          itemBuilder: (context, index) => SizedBox(
+            width: 280, 
+            child: _NewsCard(news: MockData.news[index]),
+          ),
+          separatorBuilder: (context, index) => const SizedBox(width: 12),
+        ),
+      ),
+    ],
+  );
+}
 
   static const TextStyle _subtitleStyle = TextStyle(
     fontSize: 12,
@@ -509,62 +521,63 @@ class _NewsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BaseContainer(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      child: Row(
+      margin: const EdgeInsets.only(bottom: 5),
+      padding: const EdgeInsets.all(12),
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.primaryLight, AppColors.primary],
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [AppColors.primaryLight, AppColors.primary],
+                  ),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Icon(Icons.newspaper_rounded, color: Colors.white, size: 16),
               ),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: const Icon(Icons.newspaper_rounded, color: Colors.white, size: 24),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   news.date,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  news.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  news.preview,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: AppColors.textSecondary,
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Читать дальше',
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.primaryLight,
-                  ),
-                ),
-              ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            news.title,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 4),
+          Text(
+            news.preview,
+            style: const TextStyle(
+              fontSize: 11,
+              color: AppColors.textSecondary,
+            ),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const Spacer(),
+          const Text(
+            'Читать дальше',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primaryLight,
             ),
           ),
         ],
@@ -572,3 +585,4 @@ class _NewsCard extends StatelessWidget {
     );
   }
 }
+

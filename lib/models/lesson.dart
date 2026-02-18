@@ -1,4 +1,4 @@
-/// Тип занятия (соответствует TypeScript union)
+/// Тип занятия
 enum LessonType {
   lecture,
   lab,
@@ -14,7 +14,7 @@ enum LessonStatus {
   rescheduled,
 }
 
-/// Модель занятия (из mockData.ts)
+/// Модель занятия 
 class Lesson {
   final String id;
   final String subject;
@@ -24,10 +24,9 @@ class Lesson {
   final String building;
   final String timeStart;
   final String timeEnd;
-  final int dayOfWeek; // 1-6 ПН-СБ (0 в TS был ВС, в приложении 1=ПН)
+  final int dayOfWeek;
   final String? date;
   final LessonStatus? status;
-  /// Идентификатор группы (для фильтра по группе)
   final String? groupId;
 
   const Lesson({
@@ -60,7 +59,7 @@ class Lesson {
 
   factory Lesson.fromJson(Map<String, dynamic> json) {
     return Lesson(
-      id: json['id'] as String,
+      id: json['lessonOid'] as String,
       subject: json['subject'] as String,
       type: _lessonTypeFromString(json['type'] as String),
       teacher: json['teacher'] as String,
