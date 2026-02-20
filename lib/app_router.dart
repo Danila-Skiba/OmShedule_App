@@ -4,6 +4,7 @@ import 'data/schedule_mock_data.dart';
 import 'layouts/mobile_layout.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/filter_screen.dart';
+import 'screens/calendar_picker_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/select_screen.dart';
 import 'screens/maps_screen.dart';
@@ -66,6 +67,16 @@ final GoRouter appRouter = GoRouter(
                     items: ScheduleMockData.teacherNames,
                     selectedId: selected,
                   ),
+                );
+              },
+            ),
+            GoRoute(
+              path: 'calendar',
+              pageBuilder: (context, state) {
+                final extra = state.extra as Map<String, dynamic>?;
+                final initialDate = extra?['initialDate'] as DateTime?;
+                return MaterialPage<DateTime?>(
+                  child: CalendarPickerScreen(initialDate: initialDate),
                 );
               },
             ),

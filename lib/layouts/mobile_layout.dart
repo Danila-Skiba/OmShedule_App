@@ -37,17 +37,18 @@ class MobileLayout extends StatelessWidget {
   surfaceTintColor: Colors.transparent,
   elevation: 0,
   child: SafeArea(
-    bottom: false, // 👈 отключаем нижний отступ
+    
+    bottom: false, 
     child: Container(
       decoration: BoxDecoration(
         color: const Color.fromARGB(255, 255, 255, 255).withValues(alpha: 0.5),
         borderRadius: const BorderRadius.all(Radius.circular(30)),
       ),
-      padding: const EdgeInsets.symmetric(horizontal: 0),
-      margin: const EdgeInsets.symmetric(horizontal: 20),
-      height: AppConstants.bottomNavHeight,
+      padding: const EdgeInsets.all(0),
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        mainAxisAlignment: MainAxisAlignment.spaceAround,
         children: _navItems.map((item) {
           final active = isActive(item.path);
           return Expanded(
@@ -87,11 +88,7 @@ class _NavTile extends StatelessWidget {
       color: Colors.transparent,
       child: GestureDetector(
         onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(
-            horizontal: AppConstants.spacingSm - 2,
-            vertical: AppConstants.spacingSm - 6,
-          ),
+        
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,
@@ -115,7 +112,6 @@ class _NavTile extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
