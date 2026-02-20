@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 
 /// Нижняя навигация
@@ -82,7 +81,7 @@ class _NavTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final activeColor = theme.colorScheme.primary;
-    final inactiveColor =  Colors.black;
+    const inactiveColor =  Colors.black;
     
     return Material(
       color: Colors.transparent,

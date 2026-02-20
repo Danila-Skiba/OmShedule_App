@@ -53,7 +53,7 @@ class ScheduleRepositoryImpl implements ScheduleRepository {
         roomIds: roomIds,
       );
       return ScheduleLoadResult(lessons: lessons);
-    } catch (e, st) {
+    } catch (e) {
       return ScheduleLoadResult(
         lessons: [],
         error: 'Не удалось загрузить расписание: $e',
