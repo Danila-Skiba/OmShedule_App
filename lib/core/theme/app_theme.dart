@@ -151,7 +151,9 @@ class AppTheme {
         onPrimary: Colors.white,
         onSecondary: Colors.white,
         onSurface: AppColors.textPrimaryDark,
+        onSurfaceVariant: AppColors.textSecondaryDark,
         onError: Colors.white,
+        outline: AppColors.borderDark,
         surfaceContainerHighest: AppColors.backgroundAltDark,
       ),
       cardColor: AppColors.cardDark,
@@ -163,6 +165,7 @@ class AppTheme {
           side: const BorderSide(color: AppColors.borderDark),
         ),
       ),
+      dividerColor: AppColors.dividerDark,
       appBarTheme: AppBarTheme(
         backgroundColor: AppColors.backgroundDark,
         foregroundColor: AppColors.textPrimaryDark,

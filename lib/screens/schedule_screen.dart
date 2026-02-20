@@ -1,17 +1,16 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../constants/app_colors.dart';
+import '../constants/app_constants.dart';
 import '../core/services/settings_service.dart';
 import '../data/schedule_mock_data.dart';
 import '../models/lesson.dart';
 import '../models/schedule_type.dart';
-import 'filter_screen.dart';
 
-/// Период: 17–24 февраля
 const _periodStart = '17 фев';
 const _periodEnd = '24 фев';
 
-/// Расписание (эквивалент Schedule.tsx)
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
 
@@ -20,18 +19,23 @@ class ScheduleScreen extends StatefulWidget {
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  String _view = 'today'; // today | week
+  String _view = 'today';
   late ScheduleType _scheduleType;
-  Set<String> _selectedGroupIds = {};
-  Set<String> _selectedTeacherNames = {};
-  Set<String> _selectedRoomIds = {};
-  String _searchQuery = '';
-  bool _showSearch = false;
+  String? _selectedGroupId;
+  String? _selectedTeacherName;
+  String? _selectedRoomId;
   int _selectedDay = 1;
   int _weekOffset = 0;
   Lesson? _selectedLesson;
 
   final _newEvent = _NewEventForm();
+
+  Set<String> get _selectedGroupIds =>
+      _selectedGroupId != null ? {_selectedGroupId!} : {};
+  Set<String> get _selectedTeacherNames =>
+      _selectedTeacherName != null ? {_selectedTeacherName!} : {};
+  Set<String> get _selectedRoomIds =>
+      _selectedRoomId != null ? {_selectedRoomId!} : {};
 
   @override
   void initState() {
@@ -44,38 +48,30 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final role = SettingsService.getProfileRole();
     if (role == 'student') {
       _scheduleType = ScheduleType.group;
-      final g = SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first;
-      _selectedGroupIds = {g};
-      _selectedTeacherNames = {};
-      _selectedRoomIds = {};
+      _selectedGroupId = SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first;
+      _selectedTeacherName = null;
+      _selectedRoomId = null;
     } else {
       _scheduleType = ScheduleType.teacher;
-      final t = SettingsService.getDefaultTeacherId() ?? ScheduleMockData.teacherNames.first;
-      _selectedTeacherNames = {t};
-      _selectedGroupIds = {};
-      _selectedRoomIds = {};
+      _selectedTeacherName = SettingsService.getDefaultTeacherId() ?? ScheduleMockData.teacherNames.first;
+      _selectedGroupId = null;
+      _selectedRoomId = null;
     }
   }
 
-  FilterResult get _currentFilterResult => FilterResult(
-    selectedGroupIds: _selectedGroupIds,
-    selectedTeacherNames: _selectedTeacherNames,
-    selectedRoomIds: _selectedRoomIds,
-  );
-
   List<Lesson> get _filteredLessons {
-    List<Lesson> list = ScheduleMockData.lessonsFiltered(
+    return ScheduleMockData.lessonsFiltered(
       groupIds: _selectedGroupIds.isEmpty ? null : _selectedGroupIds,
       teacherNames: _selectedTeacherNames.isEmpty ? null : _selectedTeacherNames,
       roomIds: _selectedRoomIds.isEmpty ? null : _selectedRoomIds,
     );
-    if (_searchQuery.isEmpty) return list;
-    final q = _searchQuery.toLowerCase();
-    return list.where((l) {
-      return l.subject.toLowerCase().contains(q) ||
-          l.teacher.toLowerCase().contains(q) ||
-          l.room.toLowerCase().contains(q);
-    }).toList();
+  }
+
+  String get _filterIndicator {
+    if (_selectedGroupId != null) return '$_selectedGroupId';
+    if (_selectedTeacherName != null) return '$_selectedTeacherName';
+    if (_selectedRoomId != null) return '$_selectedRoomId';
+    return 'Выберите группу, преподавателя или аудиторию';
   }
 
   int get _todayIndex {
@@ -87,17 +83,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return ColoredBox(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: Stack(
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: _buildHeader(),
+      body:  Stack(
         children: [
           CustomScrollView(
+            
             slivers: [
-              SliverToBoxAdapter(child: _buildHeader()),
+        
+              SliverToBoxAdapter(child: _buildFilterBar()),
+              SliverToBoxAdapter(child: _buildFilterIndicator()),
               SliverToBoxAdapter(child: _buildSegmentedControl()),
               SliverToBoxAdapter(child: _buildCalendarStrip()),
               SliverPadding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppConstants.spacingLg),
                 sliver: _view == 'week' ? _buildWeekView() : _buildDayView(),
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 80)),
@@ -113,102 +113,135 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Widget _buildHeader() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      'Расписание',
-                      style: TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        IconButton(
-                          icon: const Icon(Icons.filter_list_rounded, color: Colors.white, size: 20),
-                          onPressed: _openFilterScreen,
-                        ),
-                        IconButton(
-                          icon: Icon(
-                            _showSearch ? Icons.close_rounded : Icons.search_rounded,
-                            color: Colors.white,
-                            size: 20,
-                          ),
-                          onPressed: () => setState(() => _showSearch = !_showSearch),
-                        ),
-                      ],
-                    ),
-                  ],
+  AppBar _buildHeader() {
+    final theme = Theme.of(context);
+    return AppBar(
+        title: const Text('Расписание'),
+      );
+  }
+
+  Widget _buildFilterBar() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return ClipRect(
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          margin: const EdgeInsets.all(AppConstants.spacingLg),
+          padding: const EdgeInsets.all(4),
+          decoration: BoxDecoration(
+            color: (theme.cardColor).withValues(alpha: isDark ? 0.8 : 0.9),
+            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _FilterChip(
+                  label: 'Группа',
+                  selected: _selectedGroupId != null,
+                  onTap: () => {} //_openSelect('group'),
                 ),
-            if (_showSearch) ...[
-              const SizedBox(height: 12),
-              TextField(
-                style: const TextStyle(color: Colors.white),
-                decoration: InputDecoration(
-                  hintText: 'Поиск по предмету, преподавателю, аудитории...',
-                  hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
-                  filled: true,
-                  fillColor: Colors.white.withValues(alpha: 0.1),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.2)),
-                  ),
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              ),
+              Expanded(
+                child: _FilterChip(
+                  label: 'Преподаватель',
+                  selected: _selectedTeacherName != null,
+                  onTap: () => {} //_openSelect('teacher'),
                 ),
-                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+              Expanded(
+                child: _FilterChip(
+                  label: 'Аудитория',
+                  selected: _selectedRoomId != null,
+                  onTap: () => {} //_openSelect('room'),
+                ),
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
   }
 
-  Future<void> _openFilterScreen() async {
-    final result = await context.push<FilterResult?>(
-      '/schedule/filter',
-      extra: _currentFilterResult,
-    );
-    if (result != null && mounted) {
-      setState(() {
-        _selectedGroupIds = result.selectedGroupIds;
-        _selectedTeacherNames = result.selectedTeacherNames;
-        _selectedRoomIds = result.selectedRoomIds;
-      });
+  Widget _buildFilterIndicator() {
+    final theme = Theme.of(context);
+    return TextButton.icon(
+            onPressed: () => _openSelect('group'),
+            icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
+            label: Text(
+              _filterIndicator,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.primary,
+              ),
+            ),
+          );
+  }
+
+  Future<void> _openSelect(String type) async {
+    String? result;
+    if (type == 'group') {
+      result = await context.push<String?>(
+        '/schedule/select-group',
+        extra: {'selected': _selectedGroupId},
+      );
+      if (result != null && mounted) setState(() => _selectedGroupId = result);
+    } else if (type == 'teacher') {
+      result = await context.push<String?>(
+        '/schedule/select-teacher',
+        extra: {'selected': _selectedTeacherName},
+      );
+      if (result != null && mounted) setState(() => _selectedTeacherName = result);
+    } else if (type == 'room') {
+      result = await context.push<String?>(
+        '/schedule/select-room',
+        extra: {'selected': _selectedRoomId},
+      );
+      if (result != null && mounted) setState(() => _selectedRoomId = result);
     }
   }
 
   Widget _buildSegmentedControl() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.all(16),
-      color: Theme.of(context).cardColor,
-      child: Container(
-        padding: const EdgeInsets.all(4),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
-          borderRadius: BorderRadius.circular(12),
-        ),
-        child: Row(
-          children: [
-            _SegmentChip(label: 'Сегодня', value: 'today', active: _view, onTap: () => setState(() => _view = 'today')),
-            _SegmentChip(label: 'Неделя', value: 'week', active: _view, onTap: () => setState(() => _view = 'week')),
-          ],
-        ),
+      padding: const EdgeInsets.all(AppConstants.spacingLg),
+      color: theme.cardColor,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return Stack(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(4),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
+                  borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: _SegmentChip(
+                        label: 'Сегодня',
+                        value: 'today',
+                        active: _view,
+                        onTap: () => setState(() => _view = 'today'),
+                      ),
+                    ),
+                    Expanded(
+                      child: _SegmentChip(
+                        label: 'Неделя',
+                        value: 'week',
+                        active: _view,
+                        onTap: () => setState(() => _view = 'week'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -404,18 +437,19 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Widget _buildFAB() {
+    final theme = Theme.of(context);
     return Material(
-      color: AppColors.primaryLight,
+      color: theme.colorScheme.primary,
       borderRadius: BorderRadius.circular(999),
       elevation: 8,
       shadowColor: Colors.black26,
       child: InkWell(
         onTap: () => _showAddEventDialog(context),
         borderRadius: BorderRadius.circular(999),
-        child: const SizedBox(
+        child: SizedBox(
           width: 56,
           height: 56,
-          child: Icon(Icons.add_rounded, color: Colors.white, size: 28),
+          child: Icon(Icons.add_rounded, color: theme.colorScheme.onPrimary, size: 28),
         ),
       ),
     );
@@ -425,13 +459,59 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     _newEvent.reset();
     showDialog(
       context: context,
-      builder: (ctx) => _AddEventDialog(
-        form: _newEvent,
-        onCancel: () => Navigator.of(ctx).pop(),
-        onSave: () {
-          // TODO: save event
-          Navigator.of(ctx).pop();
-        },
+      builder: (ctx) => Material(
+        type: MaterialType.transparency,
+        child: _AddEventDialog(
+          form: _newEvent,
+          onCancel: () => Navigator.of(ctx).pop(),
+          onSave: () {
+            Navigator.of(ctx).pop();
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? theme.colorScheme.primary.withValues(alpha: 0.2)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+              color: selected
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -443,27 +523,40 @@ class _SegmentChip extends StatelessWidget {
   final String active;
   final VoidCallback onTap;
 
-  const _SegmentChip({required this.label, required this.value, required this.active, required this.onTap});
+  const _SegmentChip({
+    required this.label,
+    required this.value,
+    required this.active,
+    required this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final isActive = active == value;
-    return Expanded(
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(
-              label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: isActive ? AppColors.primary : AppColors.textSecondary,
-              ),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          decoration: BoxDecoration(
+            color: isActive
+                ? theme.colorScheme.primary.withValues(alpha: 0.25)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+          ),
+          child: Text(
+            label,
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleSmall?.copyWith(
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+              color: isActive
+                  ? theme.colorScheme.primary
+                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
             ),
           ),
         ),
@@ -493,65 +586,70 @@ class _LessonCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-   List<Color> color = _lessonTypeColor(lesson.type);
-    return 
-      // borderRadius: BorderRadius.circular(16),
-      InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: color[1],
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: color[0], width: 1.2),
-            boxShadow: const [BoxShadow(color: Color.fromARGB(255, 233, 233, 233), blurRadius: 4)],
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    '${lesson.timeStart} - ${lesson.timeEnd}',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textPrimary,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.5),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      lesson.typeLabel,
-                      style: TextStyle(fontSize: 12, color: color[0]),
-                      
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 4),
-              Text(
-                lesson.subject,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-              Text(
-                '${lesson.teacher} • ${lesson.room}',
-                style: TextStyle(fontSize: 12, color: AppColors.textPrimary.withValues(alpha: 0.75)),
-              ),
-            ],
-          ),
+    final theme = Theme.of(context);
+    final color = _lessonTypeColor(lesson.type);
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: color[1],
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: color[0], width: 1.2),
+          boxShadow: [
+            BoxShadow(
+              color: theme.brightness == Brightness.dark
+                  ? Colors.black.withValues(alpha: 0.2)
+                  : const Color.fromARGB(255, 233, 233, 233),
+              blurRadius: 4,
+            ),
+          ],
         ),
-      );
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Text(
+                  '${lesson.timeStart} - ${lesson.timeEnd}',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: theme.cardColor.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    lesson.typeLabel,
+                    style: TextStyle(fontSize: 12, color: color[0]),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              lesson.subject,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            Text(
+              '${lesson.teacher} • ${lesson.room}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 
@@ -562,11 +660,17 @@ class _LessonDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.all(24),
-      decoration: const BoxDecoration(
-        color: AppColors.card,
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      decoration: BoxDecoration(
+        color: theme.cardColor,
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+        border: Border(
+          top: BorderSide(color: theme.dividerColor),
+          left: BorderSide(color: theme.dividerColor),
+          right: BorderSide(color: theme.dividerColor),
+        ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -574,10 +678,9 @@ class _LessonDetailsSheet extends StatelessWidget {
         children: [
           Text(
             lesson.subject,
-            style: const TextStyle(
-              fontSize: 20,
+            style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
-              color: AppColors.primary,
+              color: theme.colorScheme.primary,
             ),
           ),
           const SizedBox(height: 24),
@@ -608,8 +711,8 @@ class _LessonDetailsSheet extends StatelessWidget {
                 child: ElevatedButton(
                   onPressed: () => Navigator.pop(context),
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primaryLight,
-                    foregroundColor: Colors.white,
+                    backgroundColor: theme.colorScheme.primary,
+                    foregroundColor: theme.colorScheme.onPrimary,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
@@ -621,10 +724,10 @@ class _LessonDetailsSheet extends StatelessWidget {
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: AppColors.primary,
+                    foregroundColor: theme.colorScheme.primary,
                     padding: const EdgeInsets.symmetric(vertical: 12),
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    side: const BorderSide(color: AppColors.border),
+                    side: BorderSide(color: theme.dividerColor),
                   ),
                   child: const Text('Отметить посещение'),
                 ),
@@ -675,20 +778,23 @@ class _DetailRow extends StatelessWidget {
               children: [
                 Text(
                   label,
-                  style: const TextStyle(fontSize: 14, color: AppColors.textSecondary),
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
                 Text(
                   value,
-                  style: const TextStyle(
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 if (subtitle != null)
                   Text(
                     subtitle!,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
                   ),
               ],
             ),
@@ -753,6 +859,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final types = [
       (id: 'personal', label: 'Личное', color: AppColors.success),
       (id: 'meeting', label: 'Встреча', color: AppColors.primaryLight),
@@ -760,7 +867,8 @@ class _AddEventDialogState extends State<_AddEventDialog> {
       (id: 'other', label: 'Другое', color: AppColors.warning),
     ];
     return Dialog(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      backgroundColor: theme.dialogBackgroundColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.radiusLg)),
       child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(24),
@@ -768,16 +876,15 @@ class _AddEventDialogState extends State<_AddEventDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Text(
+              Text(
                 'Добавить событие',
-                style: TextStyle(
-                  fontSize: 20,
+                style: theme.textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: theme.colorScheme.primary,
                 ),
               ),
               const SizedBox(height: 24),
-              const Text('Название', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              Text('Название', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
               const SizedBox(height: 8),
               TextField(
                 controller: _titleController,
@@ -787,7 +894,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                 onChanged: (v) => widget.form.title = v,
               ),
               const SizedBox(height: 16),
-              const Text('Тип', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              Text('Тип', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
               const SizedBox(height: 8),
               GridView.count(
                 shrinkWrap: true,
@@ -797,7 +904,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                 crossAxisSpacing: 8,
                 childAspectRatio: 2.2,
                 children: types.map((t) => Material(
-                  color: widget.form.type == t.id ? AppColors.primaryLight.withValues(alpha: 0.1) : AppColors.card,
+                  color: widget.form.type == t.id ? theme.colorScheme.primary.withValues(alpha: 0.15) : theme.cardColor,
                   borderRadius: BorderRadius.circular(12),
                   child: InkWell(
                     onTap: () => setState(() => widget.form.type = t.id),
@@ -807,7 +914,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: widget.form.type == t.id ? AppColors.primaryLight : AppColors.border,
+                          color: widget.form.type == t.id ? theme.colorScheme.primary : theme.dividerColor,
                           width: 2,
                         ),
                       ),
@@ -819,7 +926,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                             decoration: BoxDecoration(color: t.color, shape: BoxShape.circle),
                           ),
                           const SizedBox(width: 8),
-                          Text(t.label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+                          Text(t.label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
                         ],
                       ),
                     ),
@@ -833,7 +940,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Время', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                        Text('Время', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
                         const SizedBox(height: 8),
                         TextField(
                           decoration: const InputDecoration(hintText: '--:--'),
@@ -847,7 +954,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('Аудитория', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                        Text('Аудитория', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
                         const SizedBox(height: 8),
                         TextField(
                           controller: _roomController,
@@ -860,7 +967,7 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                 ],
               ),
               const SizedBox(height: 16),
-              const Text('Заметки', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              Text('Заметки', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
               const SizedBox(height: 8),
               TextField(
                 controller: _notesController,
@@ -877,11 +984,11 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                   Expanded(
                     child: OutlinedButton(
                       onPressed: widget.onCancel,
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: AppColors.primary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: theme.colorScheme.primary,
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.radiusMd)),
+                    ),
                       child: const Text('Отмена'),
                     ),
                   ),
@@ -890,8 +997,8 @@ class _AddEventDialogState extends State<_AddEventDialog> {
                     child: ElevatedButton(
                       onPressed: widget.onSave,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryLight,
-                        foregroundColor: Colors.white,
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),

@@ -60,11 +60,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
+    final theme = Theme.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: const BoxDecoration(
-        color: AppColors.primary,
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
+      decoration: BoxDecoration(
+        color: theme.colorScheme.primary,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.26),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: SafeArea(
         bottom: false,
@@ -99,39 +106,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
       orElse: () => _accentOptions.first,
     );
 
+    final theme = Theme.of(context);
     return BaseContainer(
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(Icons.palette_rounded, size: 16, color: AppColors.primary),
-                SizedBox(width: 8),
+                Icon(Icons.palette_rounded, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
                 Text(
                   'Внешний вид',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: theme.dividerColor),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               children: [
-                const Text(
+                Text(
                   'Тема',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -146,12 +154,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
                 const SizedBox(height: 16),
-                const Text(
+                Text(
                   'Акцентный цвет',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -165,7 +173,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   children: _accentOptions.map((t) {
                     final selected = selectedAccent.id == t.id;
                     return Material(
-                      color: selected ? AppColors.primaryLight.withValues(alpha: 0.05) : Theme.of(context).cardColor,
+                      color: selected
+                          ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                          : theme.cardColor,
                       borderRadius: BorderRadius.circular(12),
                       child: InkWell(
                         onTap: () => themeNotifier.setAccentColor(t.color),
@@ -175,7 +185,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
-                              color: selected ? AppColors.primaryLight : AppColors.border,
+                              color: selected
+                                  ? theme.colorScheme.primary
+                                  : theme.dividerColor,
                               width: 2,
                             ),
                           ),
@@ -193,10 +205,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               Expanded(
                                 child: Text(
                                   t.name,
-                                  style: const TextStyle(
+                                  style: TextStyle(
                                     fontSize: 14,
                                     fontWeight: FontWeight.w500,
-                                    color: AppColors.primary,
+                                    color: theme.colorScheme.onSurface,
                                   ),
                                 ),
                               ),
@@ -216,33 +228,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildNotificationsSection() {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(Icons.notifications_rounded, size: 16, color: AppColors.primary),
-                SizedBox(width: 8),
+                Icon(Icons.notifications_rounded, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
                 Text(
                   'Уведомления',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: theme.dividerColor),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
@@ -274,85 +287,95 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildLanguageSection() {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Padding(
-            padding: EdgeInsets.all(16),
+          Padding(
+            padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                Icon(Icons.language_rounded, size: 16, color: AppColors.primary),
-                SizedBox(width: 8),
+                Icon(Icons.language_rounded, size: 16, color: theme.colorScheme.primary),
+                const SizedBox(width: 8),
                 Text(
                   'Язык и регион',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
+                    color: theme.colorScheme.primary,
                   ),
                 ),
               ],
             ),
           ),
-          const Divider(height: 1),
+          Divider(height: 1, color: theme.dividerColor),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
-              children: _languages.map((lang) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: Material(
-                  color: _language == lang.id ? AppColors.primaryLight.withValues(alpha: 0.1) : AppColors.background,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () => setState(() => _language = lang.id),
+              children: _languages.map((lang) {
+                final selected = _language == lang.id;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Material(
+                    color: selected
+                        ? theme.colorScheme.primary.withValues(alpha: 0.12)
+                        : theme.scaffoldBackgroundColor,
                     borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: _language == lang.id ? AppColors.primaryLight : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Text(lang.flag, style: const TextStyle(fontSize: 24)),
-                          const SizedBox(width: 12),
-                          Text(
-                            lang.name,
-                            style: const TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w600,
-                              color: AppColors.primary,
-                            ),
+                    child: InkWell(
+                      onTap: () => setState(() => _language = lang.id),
+                      borderRadius: BorderRadius.circular(12),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: selected
+                                ? theme.colorScheme.primary
+                                : Colors.transparent,
+                            width: 2,
                           ),
-                          if (_language == lang.id) ...[
-                            const Spacer(),
-                            Container(
-                              width: 20,
-                              height: 20,
-                              decoration: const BoxDecoration(
-                                color: AppColors.primaryLight,
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Center(
-                                child: Icon(Icons.check, size: 12, color: Colors.white),
+                        ),
+                        child: Row(
+                          children: [
+                            Text(lang.flag, style: const TextStyle(fontSize: 24)),
+                            const SizedBox(width: 12),
+                            Text(
+                              lang.name,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurface,
                               ),
                             ),
+                            if (selected) ...[
+                              const Spacer(),
+                              Container(
+                                width: 20,
+                                height: 20,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                ),
+                                child: Icon(
+                                  Icons.check,
+                                  size: 12,
+                                  color: theme.colorScheme.onPrimary,
+                                ),
+                              ),
+                            ],
                           ],
-                        ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              )).toList(),
+                );
+              }).toList(),
             ),
           ),
         ],
@@ -361,11 +384,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildAccountSection() {
+    final theme = Theme.of(context);
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.card,
+        color: theme.cardColor,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: theme.dividerColor),
       ),
       child: Column(
         children: [
@@ -398,16 +422,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Widget _buildAppInfo() {
-    return const Center(
+    final theme = Theme.of(context);
+    return Center(
       child: Column(
         children: [
           Text(
             AppStrings.appName,
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
           Text(
             'Версия ${AppStrings.appVersion}',
-            style: TextStyle(fontSize: 12, color: AppColors.textSecondary),
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
           ),
         ],
       ),
@@ -440,15 +469,16 @@ class _NotificationRow extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: AppColors.primary,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
                 Text(
                   subtitle,
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -490,15 +520,16 @@ class _SettingsTile extends StatelessWidget {
       ),
       title: Text(
         title,
-        style: const TextStyle(
-          fontSize: 14,
+        style: Theme.of(context).textTheme.titleSmall?.copyWith(
           fontWeight: FontWeight.w600,
-          color: AppColors.primary,
+          color: Theme.of(context).colorScheme.onSurface,
         ),
       ),
       subtitle: Text(
         subtitle,
-        style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: Theme.of(context).colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }

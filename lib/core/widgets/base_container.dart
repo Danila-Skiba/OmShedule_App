@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 
 /// Базовый контейнер с общими отступами, скруглением и тенью
@@ -8,6 +10,7 @@ class BaseContainer extends StatelessWidget {
   final EdgeInsetsGeometry? padding;
   final EdgeInsetsGeometry? margin;
   final Color? backgroundColor;
+  final bool isGlass;
 
   const BaseContainer({
     super.key,
@@ -17,34 +20,51 @@ class BaseContainer extends StatelessWidget {
     this.padding,
     this.margin,
     this.backgroundColor,
+    this.isGlass = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    return Container(
+    final borderRadius = BorderRadius.circular(16);
+
+    Widget content = Container(
       width: width,
       height: height,
       padding: padding ?? const EdgeInsets.all(16),
       margin: margin,
       decoration: BoxDecoration(
-        color: backgroundColor ?? theme.cardColor,
-        borderRadius: BorderRadius.circular(12),
+        color: isGlass
+            ? (isDark ? Colors.white.withOpacity(0.04) : Colors.white.withOpacity(0.28))
+            : backgroundColor ?? theme.cardColor,
+        borderRadius: borderRadius,
         border: Border.all(
-          color: isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0),
+          color: isGlass
+              ? Colors.white.withOpacity(isDark ? 0.18 : 0.35)
+              : (isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0)),
         ),
-        boxShadow: isDark
+        boxShadow: isGlass || isDark
             ? null
             : const [
                 BoxShadow(
-                  color: Color.fromARGB(255, 220, 220, 220),
-                  blurRadius: 2,
-                  offset: Offset(0, 2),
+                  color: Color.fromARGB(80, 148, 163, 184),
+                  blurRadius: 16,
+                  offset: Offset(0, 8),
                 ),
               ],
       ),
       child: child,
+    );
+
+    if (!isGlass) return content;
+
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+        child: content,
+      ),
     );
   }
 }

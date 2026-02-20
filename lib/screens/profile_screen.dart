@@ -1,14 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import '../constants/app_colors.dart';
-import '../core/services/settings_service.dart';
 import '../core/widgets/base_container.dart';
 import '../data/mock_data.dart';
-import '../data/schedule_mock_data.dart';
 import '../models/task.dart';
 import '../widgets/app_progress.dart';
 
-/// Профиль (эквивалент Profile.tsx)
+/// Профиль
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
 
@@ -17,18 +15,7 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late String _role;
-  String? _defaultGroupId;
-  String? _defaultTeacherName;
   List<Task> _taskList = MockData.tasks;
-
-  @override
-  void initState() {
-    super.initState();
-    _role = SettingsService.getProfileRole();
-    _defaultGroupId = SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first;
-    _defaultTeacherName = SettingsService.getDefaultTeacherId() ?? ScheduleMockData.teacherNames.first;
-  }
 
   void _toggleTask(String id) {
     setState(() {
@@ -40,26 +27,88 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final completedTasks = _taskList.where((t) => t.completed).length;
     final totalTasks = _taskList.length;
     final completionRate = totalTasks > 0 ? ((completedTasks / totalTasks) * 100).round() : 0;
 
-    return ColoredBox(
-      color: AppColors.background,
-      child: CustomScrollView(
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      appBar: AppBar(
+        title: const Text('Профиль'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings_rounded),
+            onPressed: () => context.push('/settings'),
+          ),
+        ],
+      ),
+      body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _buildHeader(context)),
+          SliverToBoxAdapter(
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 40,
+                    backgroundColor: theme.colorScheme.primaryContainer,
+                    child: Icon(
+                      Icons.person_rounded,
+                      size: 40,
+                      color: theme.colorScheme.onPrimaryContainer,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Иван Петров',
+                          style: theme.textTheme.titleLarge?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: theme.colorScheme.onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'ИУ5-31б',
+                          style: theme.textTheme.bodyMedium?.copyWith(
+                            color: theme.colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            Icon(Icons.emoji_events_rounded, size: 16, color: theme.colorScheme.tertiary),
+                            const SizedBox(width: 8),
+                            Text(
+                              'Активный студент',
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                                color: theme.colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _buildRoleSwitcher(),
-                const SizedBox(height: 16),
                 _buildStatistics(completionRate),
                 const SizedBox(height: 16),
                 _buildTasksSection(completedTasks, totalTasks, completionRate),
                 const SizedBox(height: 16),
-                _buildAchievements(),
+                // _buildAchievements(),
               ]),
             ),
           ),
@@ -68,177 +117,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [AppColors.primary, AppColors.primaryLight],
-        ),
-        boxShadow: [BoxShadow(color: Colors.black26, blurRadius: 8, offset: Offset(0, 2))],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Профиль',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.settings_rounded, color: Colors.white, size: 20),
-                  onPressed: () => context.push('/settings'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 2),
-                  ),
-                  child: const Icon(Icons.person_rounded, color: Colors.white, size: 40),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Иван Петров',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        'ИУ5-31б',
-                        style: TextStyle(fontSize: 14, color: Colors.white.withValues(alpha: 0.9)),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
-                        children: [
-                          const Icon(Icons.emoji_events_rounded, color: AppColors.warning, size: 16),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Активный студент',
-                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white.withValues(alpha: 0.9)),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRoleSwitcher() {
-    return BaseContainer(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Роль',
-            style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: 12),
-          _RoleTile(
-            role: 'student',
-            title: 'Студент',
-            subtitle: _defaultGroupId ?? 'МО-231',
-            selected: _role == 'student',
-            onTap: () {
-              setState(() => _role = 'student');
-              SettingsService.setProfileRole('student');
-            },
-          ),
-          const SizedBox(height: 8),
-          _RoleTile(
-            role: 'teacher',
-            title: 'Преподаватель',
-            subtitle: _defaultTeacherName ?? 'Иванов И.И.',
-            selected: _role == 'teacher',
-            onTap: () {
-              setState(() => _role = 'teacher');
-              SettingsService.setProfileRole('teacher');
-            },
-          ),
-          const SizedBox(height: 16),
-          if (_role == 'student') ...[
-            const Text('Группа по умолчанию', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            const SizedBox(height: 8),
-            DropdownButton<String>(
-              value: _defaultGroupId ?? ScheduleMockData.groupIds.first,
-              isExpanded: true,
-              items: ScheduleMockData.groupIds.map((id) => DropdownMenuItem(value: id, child: Text(id))).toList(),
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() => _defaultGroupId = v);
-                SettingsService.setDefaultGroupId(v);
-              },
-            ),
-          ],
-          if (_role == 'teacher') ...[
-            const Text('Преподаватель по умолчанию', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-            const SizedBox(height: 8),
-            DropdownButton<String>(
-              value: _defaultTeacherName ?? ScheduleMockData.teacherNames.first,
-              isExpanded: true,
-              items: ScheduleMockData.teacherNames.map((n) => DropdownMenuItem(value: n, child: Text(n))).toList(),
-              onChanged: (v) {
-                if (v == null) return;
-                setState(() => _defaultTeacherName = v);
-                SettingsService.setDefaultTeacherId(v);
-              },
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
   Widget _buildStatistics(int completionRate) {
+    final theme = Theme.of(context);
+    final onSurf = theme.colorScheme.onSurface;
+    final onSurfVar = theme.colorScheme.onSurfaceVariant;
+    final primary = theme.colorScheme.primary;
     return Row(
       children: [
-        const Expanded(
+        Expanded(
           child: BaseContainer(
-            padding: EdgeInsets.all(16),
+            padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Посещаемость', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                    Icon(Icons.trending_up_rounded, color: AppColors.success, size: 16),
+                    Text('Посещаемость', style: theme.textTheme.bodyMedium?.copyWith(color: onSurfVar)),
+                    const Icon(Icons.trending_up_rounded, color: AppColors.success, size: 16),
                   ],
                 ),
-                SizedBox(height: 8),
-                Text('78%', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primary)),
-                SizedBox(height: 8),
-                AppProgress(value: 78, height: 8),
-                SizedBox(height: 8),
-                Text('За неделю', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                const SizedBox(height: 8),
+                Text('78%', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: primary)),
+                const SizedBox(height: 8),
+                const AppProgress(value: 78, height: 8),
+                const SizedBox(height: 8),
+                Text('За неделю', style: theme.textTheme.bodySmall?.copyWith(color: onSurfVar)),
               ],
             ),
           ),
@@ -250,15 +154,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Row(
+                Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text('Активность', style: TextStyle(fontSize: 14, color: AppColors.textSecondary)),
-                    Icon(Icons.calendar_today_rounded, color: AppColors.primaryLight, size: 16),
+                    Text('Активность', style: theme.textTheme.bodyMedium?.copyWith(color: onSurfVar)),
+                    Icon(Icons.calendar_today_rounded, color: theme.colorScheme.secondary, size: 16),
                   ],
                 ),
                 const SizedBox(height: 8),
-                const Text('4.2', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: AppColors.primary)),
+                Text('4.2', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: primary)),
                 const SizedBox(height: 8),
                 Row(
                   children: List.generate(5, (i) => Expanded(
@@ -266,14 +170,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       margin: const EdgeInsets.only(right: 2),
                       height: 8,
                       decoration: BoxDecoration(
-                        color: i < 4 ? AppColors.primaryLight : AppColors.border,
+                        color: i < 4 ? theme.colorScheme.primary : theme.dividerColor,
                         borderRadius: BorderRadius.circular(4),
                       ),
                     ),
                   )),
                 ),
                 const SizedBox(height: 8),
-                const Text('За месяц', style: TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+                Text('За месяц', style: theme.textTheme.bodySmall?.copyWith(color: onSurfVar)),
               ],
             ),
           ),
@@ -283,6 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildTasksSection(int completedTasks, int totalTasks, int completionRate) {
+    final theme = Theme.of(context);
     return BaseContainer(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -291,19 +196,25 @@ class _ProfileScreenState extends State<ProfileScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              const Text(
+              Text(
                 'Мои задачи',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: AppColors.primary),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.primary,
+                ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: AppColors.primaryLight.withValues(alpha: 0.1),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
                   '$completedTasks/$totalTasks',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: AppColors.primaryLight),
+                  style: theme.textTheme.labelMedium?.copyWith(
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
                 ),
               ),
             ],
@@ -311,7 +222,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 16),
           AppProgress(value: completionRate.toDouble(), height: 8),
           const SizedBox(height: 8),
-          Text('$completionRate% выполнено', style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
+          Text(
+            '$completionRate% выполнено',
+            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+          ),
           const SizedBox(height: 16),
           ..._taskList.map((task) => _TaskTile(
             task: task,
@@ -323,11 +237,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildAchievements() {
+    final theme = Theme.of(context);
     final achievements = [
       ('🎯', 'Отличник'),
       ('⚡', 'Скорость'),
       ('🔥', 'Серия'),
       ('🏆', 'Чемпион'),
+      ('🏆', 'Чемпион')
     ];
     return Container(
       padding: const EdgeInsets.all(16),
@@ -336,23 +252,26 @@ class _ProfileScreenState extends State<ProfileScreen> {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            AppColors.warning.withValues(alpha: 0.1),
-            AppColors.error.withValues(alpha: 0.1),
+            AppColors.warning.withValues(alpha: 0.12),
+            AppColors.error.withValues(alpha: 0.12),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: AppColors.warning.withValues(alpha: 0.2)),
+        border: Border.all(color: AppColors.warning.withValues(alpha: 0.25)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Row(
+          Row(
             children: [
-              Icon(Icons.emoji_events_rounded, color: AppColors.warning, size: 20),
-              SizedBox(width: 8),
+              const Icon(Icons.emoji_events_rounded, color: AppColors.warning, size: 20),
+              const SizedBox(width: 8),
               Text(
                 'Достижения',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: Color(0xFF92400E)),
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: theme.colorScheme.tertiary,
+                ),
               ),
             ],
           ),
@@ -360,16 +279,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
           GridView.count(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            crossAxisCount: 4,
+            crossAxisCount: 3,
             mainAxisSpacing: 8,
             crossAxisSpacing: 8,
             childAspectRatio: 0.9,
             children: achievements.map((a) => Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: AppColors.card,
+                color: theme.cardColor,
                 borderRadius: BorderRadius.circular(12),
-                boxShadow: const [BoxShadow(color: Colors.black, blurRadius: 4)],
+                border: Border.all(color: theme.dividerColor.withValues(alpha: 0.5)),
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -378,7 +297,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   const SizedBox(height: 4),
                   Text(
                     a.$2,
-                    style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                     textAlign: TextAlign.center,
                   ),
                 ],
@@ -386,69 +307,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             )).toList(),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _RoleTile extends StatelessWidget {
-  final String role;
-  final String title;
-  final String subtitle;
-  final bool selected;
-  final VoidCallback onTap;
-
-  const _RoleTile({
-    required this.role,
-    required this.title,
-    required this.subtitle,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: selected ? AppColors.primaryLight.withValues(alpha: 0.1) : AppColors.background,
-      borderRadius: BorderRadius.circular(12),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: selected ? AppColors.primaryLight : Colors.transparent,
-              width: 2,
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 20,
-                height: 20,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: selected ? AppColors.primaryLight : AppColors.divider,
-                    width: 2,
-                  ),
-                  color: selected ? AppColors.primaryLight : Colors.transparent,
-                ),
-                child: selected ? const Center(child: Icon(Icons.check, size: 12, color: Colors.white)) : null,
-              ),
-              const SizedBox(width: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: AppColors.primary)),
-                  Text(subtitle, style: const TextStyle(fontSize: 12, color: AppColors.textSecondary)),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
@@ -462,11 +320,14 @@ class _TaskTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final isUrgent = task.deadline == 'сегодня' || task.deadline == 'завтра';
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
-        color: task.completed ? AppColors.success.withValues(alpha: 0.05) : AppColors.background,
+        color: task.completed
+            ? AppColors.success.withValues(alpha: 0.1)
+            : theme.scaffoldBackgroundColor,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,
@@ -476,7 +337,9 @@ class _TaskTile extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(12),
               border: Border.all(
-                color: task.completed ? AppColors.success.withValues(alpha: 0.2) : AppColors.border,
+                color: task.completed
+                    ? AppColors.success.withValues(alpha: 0.3)
+                    : theme.dividerColor,
               ),
             ),
             child: Row(
@@ -485,7 +348,7 @@ class _TaskTile extends StatelessWidget {
                 Icon(
                   task.completed ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
                   size: 20,
-                  color: task.completed ? AppColors.success : AppColors.divider,
+                  color: task.completed ? AppColors.success : theme.dividerColor,
                 ),
                 const SizedBox(width: 12),
                 Expanded(
@@ -494,19 +357,19 @@ class _TaskTile extends StatelessWidget {
                     children: [
                       Text(
                         task.title,
-                        style: TextStyle(
-                          fontSize: 14,
+                        style: theme.textTheme.titleSmall?.copyWith(
                           fontWeight: FontWeight.w600,
-                          color: task.completed ? AppColors.textSecondary : AppColors.primary,
+                          color: task.completed
+                              ? theme.colorScheme.onSurfaceVariant
+                              : theme.colorScheme.onSurface,
                           decoration: task.completed ? TextDecoration.lineThrough : null,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         task.deadline,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: isUrgent ? AppColors.error : AppColors.textSecondary,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: isUrgent ? AppColors.error : theme.colorScheme.onSurfaceVariant,
                           fontWeight: isUrgent ? FontWeight.w600 : FontWeight.normal,
                         ),
                       ),

@@ -97,24 +97,52 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = mediaQuery.viewInsets.bottom;
+
     return ColoredBox(
       color: AppColors.background,
-      child: Column(
-        children: [
-          _buildHeader(),
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.all(16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                return _MessageBubble(message: _messages[index]);
-              },
+      child: SafeArea(
+        top: false,
+        bottom: false,
+        child: Column(
+          children: [
+            _buildHeader(),
+            Expanded(
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    controller: _scrollController,
+                    padding: const EdgeInsets.all(16),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                      child: IntrinsicHeight(
+                        child: Column(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                children: _messages
+                                    .map((m) => _MessageBubble(message: m))
+                                    .toList(),
+                              ),
+                            ),
+                            if (_messages.length <= 1) _buildQuickPrompts(),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
-          ),
-          if (_messages.length <= 1) _buildQuickPrompts(),
-          _buildInput(),
-        ],
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeOutCubic,
+              padding: EdgeInsets.only(bottom: bottomInset),
+              child: _buildInput(),
+            ),
+          ],
+        ),
       ),
     );
   }
