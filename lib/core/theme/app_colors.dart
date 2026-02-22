@@ -29,6 +29,10 @@ class AppColors {
   static const Color warning = Color.fromARGB(255, 255, 168, 19);
   static const Color error = Color(0xFFEF4444);
 
+  /// Фиолетовый акцент для личных задач (гармонирует с primary).
+  static const Color taskAccent = Color(0xFF7C3AED);
+  static const Color hintTask = Color(0xFFEDE9FE);
+
   // UI
   static const Color border = Color(0xFFE2E8F0);
   static const Color card = Colors.white;

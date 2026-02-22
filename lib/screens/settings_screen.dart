@@ -33,11 +33,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: CustomScrollView(
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar:  AppBar(
+      title: const Text('Настройки'),    
+    ),
+
+    body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(child: _buildHeader(context)),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
@@ -59,42 +62,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.primary,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.26),
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Row(
-          children: [
-            IconButton(
-              icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-              onPressed: () => context.pop(),
-            ),
-            const SizedBox(width: 8),
-            const Text(
-              'Настройки',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
+  // Widget _buildHeader(BuildContext context) {
+  //   final theme = Theme.of(context);
+  //   return AppBar(
+  //     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+  //     decoration: BoxDecoration(
+  //       color: theme.colorScheme.primary,
+  //       boxShadow: [
+  //         BoxShadow(
+  //           color: Colors.black.withValues(alpha: 0.26),
+  //           blurRadius: 8,
+  //           offset: const Offset(0, 2),
+  //         ),
+  //       ],
+  //     ),
+  //     child: SafeArea(
+  //       bottom: false,
+  //       child: Row(
+  //         children: [
+  //           IconButton(
+  //             icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
+  //             onPressed: () => context.pop(),
+  //           ),
+  //           const SizedBox(width: 8),
+  //           const Text(
+  //             'Настройки',
+  //             style: TextStyle(
+  //               fontSize: 18,
+  //               fontWeight: FontWeight.bold,
+  //               color: Colors.white,
+  //             ),
+  //           ),
+  //         ],
+  //       ),
+  //     ),
+  //   );
+  // }
 
   Widget _buildAppearanceSection() {
     final themeNotifier = context.watch<ThemeNotifier>();

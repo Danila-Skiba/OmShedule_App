@@ -12,7 +12,7 @@ class MobileLayout extends StatelessWidget {
     _NavItem(path: '/', label: 'Главная', icon: Icons.home_rounded),
     _NavItem(path: '/schedule', label: 'Расписание', icon: Icons.calendar_today_rounded),
     _NavItem(path: '/profile', label: 'Профиль', icon: Icons.person_rounded),
-    _NavItem(path: '/chat', label: 'Помощник', icon: Icons.chat_bubble_rounded),
+    // _NavItem(path: '/chat', label: 'Помощник', icon: Icons.chat_bubble_rounded),
   ];
 
   @override
@@ -42,6 +42,14 @@ class MobileLayout extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color.fromARGB(255, 255, 255, 255).withValues(alpha: 0.5),
         borderRadius: const BorderRadius.all(Radius.circular(30)),
+        boxShadow: const [ 
+                BoxShadow(
+                  color: Color.fromARGB(80, 148, 163, 184),
+                  blurRadius: 16,
+                  offset: Offset(0, 8),
+                ),
+              ],
+
       ),
       padding: const EdgeInsets.all(0),
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),

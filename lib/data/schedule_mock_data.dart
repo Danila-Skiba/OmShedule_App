@@ -73,30 +73,39 @@ class ScheduleMockData {
     return allLessons.where((l) => ids.contains(l.room)).toList();
   }
 
-  /// Объединение занятий по выбранным фильтрам (хотя бы один выбран в категории)
-  static List<Lesson> lessonsFiltered({
+  /// Фильтрация по ОДНОМУ типу (исключающая).
+  /// Приоритет: groupIds > teacherNames > roomIds.
+  /// Не суммирует расписание по разным фильтрам.
+  static List<Lesson> lessonsFilteredExclusive({
     Set<String>? groupIds,
     Set<String>? teacherNames,
     Set<String>? roomIds,
   }) {
-    final list = <Lesson>[];
-    final seen = <String>{};
+    List<Lesson> list;
     if (groupIds != null && groupIds.isNotEmpty) {
-      for (final l in lessonsForGroups(groupIds)) {
-        if (seen.add(l.id)) list.add(l);
-      }
+      list = lessonsForGroups(groupIds);
+    } else if (teacherNames != null && teacherNames.isNotEmpty) {
+      list = lessonsForTeachers(teacherNames);
+    } else if (roomIds != null && roomIds.isNotEmpty) {
+      list = lessonsForRooms(roomIds);
+    } else {
+      list = [];
     }
-    if (teacherNames != null && teacherNames.isNotEmpty) {
-      for (final l in lessonsForTeachers(teacherNames)) {
-        if (seen.add(l.id)) list.add(l);
-      }
-    }
-    if (roomIds != null && roomIds.isNotEmpty) {
-      for (final l in lessonsForRooms(roomIds)) {
-        if (seen.add(l.id)) list.add(l);
-      }
-    }
-    if (list.isEmpty) return allLessons;
-    return list..sort((a, b) => a.dayOfWeek != b.dayOfWeek ? a.dayOfWeek.compareTo(b.dayOfWeek) : a.timeStart.compareTo(b.timeStart));
+    return list
+      ..sort((a, b) => a.dayOfWeek != b.dayOfWeek
+          ? a.dayOfWeek.compareTo(b.dayOfWeek)
+          : a.timeStart.compareTo(b.timeStart));
   }
+
+  /// Устаревший метод (объединение). Оставлен для совместимости.
+  @Deprecated('Используйте lessonsFilteredExclusive для независимых фильтров')
+  static List<Lesson> lessonsFiltered({
+    Set<String>? groupIds,
+    Set<String>? teacherNames,
+    Set<String>? roomIds,
+  }) => lessonsFilteredExclusive(
+        groupIds: groupIds,
+        teacherNames: teacherNames,
+        roomIds: roomIds,
+      );
 }

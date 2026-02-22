@@ -31,6 +31,7 @@ abstract class ScheduleRepository {
 }
 
 /// Реализация с моковыми данными.
+/// Фильтры работают НЕЗАВИСИМО: передаётся только один тип фильтра.
 /// TODO: заменить на ScheduleApiRepository при подключении API.
 class ScheduleRepositoryImpl implements ScheduleRepository {
   @override
@@ -40,14 +41,11 @@ class ScheduleRepositoryImpl implements ScheduleRepository {
     Set<String>? teacherNames,
     Set<String>? roomIds,
   }) async {
-    // Имитация задержки сети при переключении недели
     await Future<void>.delayed(const Duration(milliseconds: 300));
 
     try {
-      // Моковые данные: расписание не привязано к датам, используем dayOfWeek (1–6).
-      // В реальном API здесь будет запрос, например:
-      // final response = await http.get(Uri.parse('$baseUrl/schedule?from=${period.startDate}&to=${period.endDate}&...'));
-      final lessons = ScheduleMockData.lessonsFiltered(
+      // Используем только ОДИН активный фильтр — без суммирования.
+      final lessons = ScheduleMockData.lessonsFilteredExclusive(
         groupIds: groupIds,
         teacherNames: teacherNames,
         roomIds: roomIds,

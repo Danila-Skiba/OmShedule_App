@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:omstu_schedule/core/widgets/base_container.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../constants/app_constants.dart';

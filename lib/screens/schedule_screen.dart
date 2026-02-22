@@ -1,15 +1,19 @@
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omstu_schedule/core/widgets/base_container.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 import '../core/services/settings_service.dart';
+import '../core/services/task_service.dart';
+import '../core/state/filter_controller.dart';
 import '../core/state/schedule_week_controller.dart';
 import '../core/utils/week_service.dart';
 import '../data/schedule_mock_data.dart';
 import '../models/lesson.dart';
+import '../models/personal_task.dart';
 import '../models/schedule_type.dart';
+import '../widgets/add_task_dialog.dart';
+import '../widgets/personal_task_card.dart';
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -21,44 +25,79 @@ class ScheduleScreen extends StatefulWidget {
 class _ScheduleScreenState extends State<ScheduleScreen> {
   String _view = 'today';
   late ScheduleType _scheduleType;
-  String? _selectedGroupId;
-  String? _selectedTeacherName;
-  String? _selectedRoomId;
   Lesson? _selectedLesson;
   late ScheduleWeekController _weekController;
-
-  final _newEvent = _NewEventForm();
-
-  Set<String> get _selectedGroupIds =>
-      _selectedGroupId != null ? {_selectedGroupId!} : {};
-  Set<String> get _selectedTeacherNames =>
-      _selectedTeacherName != null ? {_selectedTeacherName!} : {};
-  Set<String> get _selectedRoomIds =>
-      _selectedRoomId != null ? {_selectedRoomId!} : {};
+  late FilterController _filterController;
+  List<PersonalTask> _tasks = [];
 
   @override
   void initState() {
     super.initState();
+    _filterController = FilterController();
     _applyDefaultsFromProfile();
+    _filterController.addListener(_onFilterChanged);
     _weekController = ScheduleWeekController();
     _weekController.addListener(_onWeekControllerChanged);
+    TaskService.instance.addListener(_onTasksChanged);
     _syncFiltersToController();
+    _loadTasks();
   }
 
   @override
   void dispose() {
+    TaskService.instance.removeListener(_onTasksChanged);
+    _filterController.removeListener(_onFilterChanged);
+    _filterController.dispose();
     _weekController.removeListener(_onWeekControllerChanged);
     _weekController.dispose();
     super.dispose();
   }
 
-  void _onWeekControllerChanged() => setState(() {});
+  void _onFilterChanged() => setState(() {});
 
+  void _onTasksChanged() {
+    if (_filterController.isPersonal && mounted) _loadTasks();
+  }
+  void _onWeekControllerChanged() {
+    setState(() {});
+    _loadTasks();
+  }
+
+  Future<void> _loadTasks() async {
+    final week = _weekController.currentWeek;
+    final tasks = await TaskService.instance.getTasksForPeriod(
+      week.startDate,
+      week.endDate,
+    );
+    if (mounted) setState(() => _tasks = tasks);
+  }
+
+  /// Передаёт в репозиторий только выбранный фильтр — без суммирования.
   void _syncFiltersToController() {
+    final ft = _filterController.currentFilterType.value;
+    Set<String>? groupIds;
+    Set<String>? teacherNames;
+    Set<String>? roomIds;
+    switch (ft) {
+      case FilterType.group:
+        final v = _filterController.selectedGroup.value;
+        groupIds = v != null ? {v} : null;
+        break;
+      case FilterType.teacher:
+        final v = _filterController.selectedTeacher.value;
+        teacherNames = v != null ? {v} : null;
+        break;
+      case FilterType.audience:
+        final v = _filterController.selectedAudience.value;
+        roomIds = v != null ? {v} : null;
+        break;
+      case FilterType.personal:
+        break;
+    }
     _weekController.setFilters(
-      groupIds: _selectedGroupIds.isEmpty ? null : _selectedGroupIds,
-      teacherNames: _selectedTeacherNames.isEmpty ? null : _selectedTeacherNames,
-      roomIds: _selectedRoomIds.isEmpty ? null : _selectedRoomIds,
+      groupIds: groupIds,
+      teacherNames: teacherNames,
+      roomIds: roomIds,
     );
   }
 
@@ -66,24 +105,72 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final role = SettingsService.getProfileRole();
     if (role == 'student') {
       _scheduleType = ScheduleType.group;
-      _selectedGroupId = SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first;
-      _selectedTeacherName = null;
-      _selectedRoomId = null;
+      _filterController.updateGroup(
+        SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first,
+      );
+      _filterController.updateTeacher(null);
+      _filterController.updateAudience(null);
     } else {
       _scheduleType = ScheduleType.teacher;
-      _selectedTeacherName = SettingsService.getDefaultTeacherId() ?? ScheduleMockData.teacherNames.first;
-      _selectedGroupId = null;
-      _selectedRoomId = null;
+      _filterController.updateTeacher(
+        SettingsService.getDefaultTeacherId() ??
+            ScheduleMockData.teacherNames.first,
+      );
+      _filterController.updateGroup(null);
+      _filterController.updateAudience(null);
     }
+    _filterController.setFilterType(
+      _scheduleType == ScheduleType.group
+          ? FilterType.group
+          : FilterType.teacher,
+    );
   }
 
   List<Lesson> get _filteredLessons => _weekController.lessons;
 
   String get _filterIndicator {
-    if (_selectedGroupId != null) return '$_selectedGroupId';
-    if (_selectedTeacherName != null) return '$_selectedTeacherName';
-    if (_selectedRoomId != null) return '$_selectedRoomId';
-    return 'Выберите группу, преподавателя или аудиторию';
+    final v = _filterController.selectedValue;
+    if (v != null) return v;
+    if (_filterController.isPersonal) return 'Личное';
+    switch (_filterController.currentFilterType.value) {
+      case FilterType.group:
+        return 'Выберите группу';
+      case FilterType.teacher:
+        return 'Выберите преподавателя';
+      case FilterType.audience:
+        return 'Выберите аудиторию';
+      case FilterType.personal:
+        return 'Личное';
+    }
+  }
+
+  static String _dateStr(DateTime d) {
+    final y = d.year.toString().padLeft(4, '0');
+    final m = d.month.toString().padLeft(2, '0');
+    final day = d.day.toString().padLeft(2, '0');
+    return '$y-$m-$day';
+  }
+
+  List<PersonalTask> _tasksForDate(DateTime date) {
+    final s = _dateStr(date);
+    return _tasks.where((t) => t.date == s).toList()
+      ..sort((a, b) => a.time.compareTo(b.time));
+  }
+
+  void _openSelectForCurrentFilter() {
+    switch (_filterController.currentFilterType.value) {
+      case FilterType.group:
+        _openSelect('group');
+        break;
+      case FilterType.teacher:
+        _openSelect('teacher');
+        break;
+      case FilterType.audience:
+        _openSelect('room');
+        break;
+      case FilterType.personal:
+        break;
+    }
   }
 
   @override
@@ -116,11 +203,12 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 child: CircularProgressIndicator(),
               ),
             ),
-          Positioned(
-            right: 16,
-            bottom: 160,
-            child: _buildFAB(),
-          ),
+          if (_filterController.isPersonal)
+            Positioned(
+              right: 16,
+              bottom: 160,
+              child: _buildFAB(),
+            ),
         ],
       ),
     );
@@ -141,62 +229,99 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Widget _buildFilterBar() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return ClipRect(
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-        child: Container(
-          margin: const EdgeInsets.all(AppConstants.spacingLg),
-          padding: const EdgeInsets.all(4),
-          decoration: BoxDecoration(
-            color: (theme.cardColor).withValues(alpha: isDark ? 0.8 : 0.9),
-            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+  final theme = Theme.of(context);
+  final isDark = theme.brightness == Brightness.dark;
+  final items = [
+    (FilterType.group, 'Группа', Icons.groups),
+    (FilterType.teacher, 'Преподаватель', Icons.person),
+    (FilterType.audience, 'Аудитория', Icons.meeting_room),
+    (FilterType.personal, 'Личное', Icons.person_outline),
+  ];
+  
+  return ValueListenableBuilder<FilterType>(
+    valueListenable: _filterController.currentFilterType,
+    builder: (context, selectedType, child) {
+      return SizedBox(
+        height: 70,
+        child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.all(AppConstants.spacingLg),
+            separatorBuilder: (context, index) => const SizedBox(width: 8),
+            itemBuilder: (context, index) {
+              final item = items[index];
+              final isSelected = selectedType == item.$1;
+              
+              return GestureDetector(
+                onTap: () {
+                  _filterController.setFilterType(item.$1);
+                  if (item.$1 != FilterType.personal) {
+                    _syncFiltersToController();
+                  }
+                },
+                child: BaseContainer(
+                  shadow: isSelected ? true : false,
+
+                  
+                  backgroundColor: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+
+                  ),
+                 
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        item.$3,
+                        size: 18,
+                        color: isSelected
+                            ? theme.colorScheme.primary
+                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        item.$2,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: isSelected
+                              ? theme.colorScheme.primary
+                              : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: _FilterChip(
-                  label: 'Группа',
-                  selected: _selectedGroupId != null,
-                  onTap: () => _openSelect('group'),
-                ),
-              ),
-              Expanded(
-                child: _FilterChip(
-                  label: 'Преподаватель',
-                  selected: _selectedTeacherName != null,
-                  onTap: () => _openSelect('teacher'),
-                ),
-              ),
-              Expanded(
-                child: _FilterChip(
-                  label: 'Аудитория',
-                  selected: _selectedRoomId != null,
-                  onTap: () => _openSelect('room'),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
+      );
+    }
+  );
   }
+
 
   Widget _buildFilterIndicator() {
     final theme = Theme.of(context);
-    return TextButton.icon(
-            onPressed: () => _openSelect('group'),
-            icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
-            label: Text(
-              _filterIndicator,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          );
+    if (!_filterController.isPersonal) {
+      return TextButton.icon(
+      onPressed: _openSelectForCurrentFilter,
+      icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
+      label: Text(
+        _filterIndicator,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.primary,
+        ),
+      ),
+    );
+    }
+
+    return const SizedBox();
+    
   }
 
   Future<void> _openSelect(String type) async {
@@ -204,28 +329,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (type == 'group') {
       result = await context.push<String?>(
         '/schedule/select-group',
-        extra: {'selected': _selectedGroupId},
+        extra: {'selected': _filterController.selectedGroup.value},
       );
       if (result != null && mounted) {
-        setState(() => _selectedGroupId = result);
+        _filterController.updateGroup(result);
         _syncFiltersToController();
       }
     } else if (type == 'teacher') {
       result = await context.push<String?>(
         '/schedule/select-teacher',
-        extra: {'selected': _selectedTeacherName},
+        extra: {'selected': _filterController.selectedTeacher.value},
       );
       if (result != null && mounted) {
-        setState(() => _selectedTeacherName = result);
+        _filterController.updateTeacher(result);
         _syncFiltersToController();
       }
     } else if (type == 'room') {
       result = await context.push<String?>(
         '/schedule/select-room',
-        extra: {'selected': _selectedRoomId},
+        extra: {'selected': _filterController.selectedAudience.value},
       );
       if (result != null && mounted) {
-        setState(() => _selectedRoomId = result);
+        _filterController.updateAudience(result);
         _syncFiltersToController();
       }
     }
@@ -241,49 +366,90 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  Widget _buildSegmentedControl() {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    return Container(
-      padding: const EdgeInsets.all(AppConstants.spacingLg),
-      color: theme.cardColor,
+Widget _buildSegmentedControl() {
+  final theme = Theme.of(context);
+  final isDark = theme.brightness == Brightness.dark;
+  
+  return
+    BaseContainer(
+      shadow: false,
+      
+      margin:const EdgeInsets.symmetric(horizontal: AppConstants.spacingLg).copyWith(bottom: 10),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      backgroundColor: Colors.white.withValues(alpha: 0.1),
       child: LayoutBuilder(
         builder: (context, constraints) {
           return Stack(
             children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+              // Анимированный индикатор
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 300),
+                curve: Curves.easeOut,
+                margin: EdgeInsets.only(
+                  left: _view == 'today' ? 4 : constraints.maxWidth / 2,
                 ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _SegmentChip(
-                        label: 'Сегодня',
-                        value: 'today',
-                        active: _view,
-                        onTap: () => setState(() => _view = 'today'),
-                      ),
-                    ),
-                    Expanded(
-                      child: _SegmentChip(
-                        label: 'Неделя',
-                        value: 'week',
-                        active: _view,
-                        onTap: () => setState(() => _view = 'week'),
-                      ),
+                width: (constraints.maxWidth - 8) / 2,
+                height: 35,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
                     ),
                   ],
                 ),
+              ),
+              
+              // Кнопки
+              Row(
+                children: [
+                  _buildSegmentButton(
+                    label: 'Сегодня',
+                    value: 'today',
+                    isSelected: _view == 'today',
+                  ),
+                  _buildSegmentButton(
+                    label: 'Неделя',
+                    value: 'week',
+                    isSelected: _view == 'week',
+                  ),
+                ],
               ),
             ],
           );
         },
       ),
     );
-  }
+}
+
+Widget _buildSegmentButton({
+  required String label,
+  required String value,
+  required bool isSelected,
+}) {
+  return Expanded(
+    child: GestureDetector(
+      onTap: () => setState(() => _view = value),
+      child: Container(
+        height: 35,
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
+          ),
+        ),
+      ),
+    ),
+  );
+}
 
   Widget _buildCalendarStrip() {
     final week = _weekController.currentWeek;
@@ -439,56 +605,76 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final theme = Theme.of(context);
     final children = <Widget>[];
     final week = _weekController.currentWeek;
+    final isPersonal = _filterController.isPersonal;
 
     for (var dayIndex = 0; dayIndex < 7; dayIndex++) {
-      final dayOfWeek = dayIndex + 1; // 1=Пн, 7=Вс
+      final dayOfWeek = dayIndex + 1;
       final date = week.dates[dayIndex];
       final dayLabel = WeekService.weekDayLabels[dayIndex];
+      final dayLessons = isPersonal
+          ? <Lesson>[]
+          : _filteredLessons.where((l) => l.dayOfWeek == dayOfWeek).toList();
+      final dayTasks = _tasksForDate(date);
 
       children.add(
         Padding(
           padding: const EdgeInsets.only(top: 16, bottom: 8),
-          child: Row(
-            children: [
-              Text(
-                '$dayLabel, ${date.day}',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary,
-                ),
-              ),
-            ],
+          child: Text(
+            '$dayLabel, ${date.day}',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary,
+            ),
           ),
         ),
       );
-      final dayLessons = _filteredLessons.where((l) => l.dayOfWeek == dayOfWeek).toList();
-      for (final lesson in dayLessons) {
-        children.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _LessonCard(
-              lesson: lesson,
-              onTap: () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => _LessonDetailsSheet(lesson: lesson),
-                );
-              },
-            ),
+
+      final merged = <({String time, Widget widget})>[];
+      for (final l in dayLessons) {
+        merged.add((time: l.timeStart, widget: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: _LessonCard(
+            lesson: l,
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                useRootNavigator: true,
+                isScrollControlled: true,
+                backgroundColor: Colors.transparent,
+                builder: (_) => _LessonDetailsSheet(lesson: l),
+              );
+            },
           ),
-        );
+        )));
       }
-      if (dayLessons.isEmpty) {
+      if (isPersonal) {
+        for (final t in dayTasks) {
+          merged.add((time: t.time, widget: Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: PersonalTaskCard(
+              task: t,
+              onDelete: () => _confirmDeleteTask(context, t),
+            ),
+          )));
+        }
+      }
+      merged.sort((a, b) => a.time.compareTo(b.time));
+
+      for (final m in merged) {
+        children.add(m.widget);
+      }
+      if (merged.isEmpty) {
         children.add(
           Padding(
             padding: const EdgeInsets.only(bottom: 16),
             child: Center(
               child: Text(
-                'Занятий нет',
-                style: TextStyle(fontSize: 14, color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary),
+                isPersonal ? 'Задач нет' : 'Занятий нет',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary,
+                ),
               ),
             ),
           ),
@@ -532,30 +718,89 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   Widget _buildDayView() {
-    final dayOfWeek = _weekController.selectedDayIndex + 1; // 1=Пн .. 7=Вс
-    final dayLessons = _filteredLessons.where((l) => l.dayOfWeek == dayOfWeek).toList();
+    final dayOfWeek = _weekController.selectedDayIndex + 1;
+    final date = _weekController.currentWeek.dates[_weekController.selectedDayIndex];
+    final isPersonal = _filterController.isPersonal;
+    final dayLessons = isPersonal
+        ? <Lesson>[]
+        : _filteredLessons.where((l) => l.dayOfWeek == dayOfWeek).toList();
+    final dayTasks = _tasksForDate(date);
+
+    final merged = <({String time, Widget widget})>[];
+    for (final l in dayLessons) {
+      merged.add((time: l.timeStart, widget: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: _LessonCard(
+          lesson: l,
+          onTap: () {
+            showModalBottomSheet(
+              useRootNavigator: true,
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (_) => _LessonDetailsSheet(lesson: l),
+            );
+          },
+        ),
+      )));
+    }
+    // Личные задачи — только на вкладке «Личное».
+    if (isPersonal) {
+      for (final t in dayTasks) {
+        merged.add((time: t.time, widget: Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: PersonalTaskCard(
+            task: t,
+            onDelete: () => _confirmDeleteTask(context, t),
+          ),
+        )));
+      }
+    }
+    merged.sort((a, b) => a.time.compareTo(b.time));
 
     return SliverList(
       delegate: SliverChildBuilderDelegate(
-        (context, index) => Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _LessonCard(
-            lesson: dayLessons[index],
-            onTap: () {
-              showModalBottomSheet(
-          
-                useRootNavigator: true,
-                context: context,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => _LessonDetailsSheet(lesson: dayLessons[index]),
-              );
-            },
-          ),
-        ),
-        childCount: dayLessons.length,
+        (context, index) => merged[index].widget,
+        childCount: merged.length,
       ),
     );
+  }
+
+  Future<void> _confirmDeleteTask(BuildContext context, PersonalTask task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить задачу?'),
+        content: Text('«${task.title}» будет удалена.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('Удалить', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      try {
+        await TaskService.instance.deleteTask(task.id);
+        await _loadTasks();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Задача удалена')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка удаления: $e')),
+          );
+        }
+      }
+    }
   }
 
   Widget _buildFAB() {
@@ -566,7 +811,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       elevation: 8,
       shadowColor: Colors.black26,
       child: InkWell(
-        onTap: () => _showAddEventDialog(context),
+        onTap: _showAddTaskDialog,
         borderRadius: BorderRadius.circular(999),
         child: SizedBox(
           width: 56,
@@ -577,30 +822,26 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  void _showAddEventDialog(BuildContext context) {
-    _newEvent.reset();
+  void _showAddTaskDialog() {
+    final forDate = _view == 'week'
+        ? _weekController.currentWeek.startDate
+        : _weekController.currentWeek.dates[_weekController.selectedDayIndex];
     showDialog(
       context: context,
-      builder: (ctx) => Material(
-        type: MaterialType.transparency,
-        child: _AddEventDialog(
-          form: _newEvent,
-          onCancel: () => Navigator.of(ctx).pop(),
-          onSave: () {
-            Navigator.of(ctx).pop();
-          },
-        ),
+      builder: (_) => AddTaskDialog(
+        forDate: forDate,
+        onSaved: _loadTasks,
       ),
     );
   }
 }
 
-class _FilterChip extends StatelessWidget {
+class _SimpleChip extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
 
-  const _FilterChip({
+  const _SimpleChip({
     required this.label,
     required this.selected,
     required this.onTap,
@@ -613,72 +854,24 @@ class _FilterChip extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
           padding: const EdgeInsets.symmetric(vertical: 10),
           decoration: BoxDecoration(
             color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-          ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-              color: selected
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _SegmentChip extends StatelessWidget {
-  final String label;
-  final String value;
-  final String active;
-  final VoidCallback onTap;
-
-  const _SegmentChip({
-    required this.label,
-    required this.value,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isActive = active == value;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(AppConstants.radiusSm),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: isActive
                 ? theme.colorScheme.primary.withValues(alpha: 0.25)
                 : Colors.transparent,
-            borderRadius: BorderRadius.circular(AppConstants.radiusSm),
+            borderRadius: BorderRadius.circular(8),
           ),
-          child: Text(
-            label,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-              color: isActive
-                  ? theme.colorScheme.primary
-                  : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+          child: Center(
+            child: Text(
+              label,
+              style: theme.textTheme.titleSmall?.copyWith(
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.7),
+              ),
             ),
           ),
         ),
@@ -817,30 +1010,30 @@ class _LessonDetailsSheet extends StatelessWidget {
             iconColor: AppColors.success,
             label: 'Преподаватель',
             value: lesson.teacher,
-            subtitle: '★ 4.2 (127 отзывов)',
+            // subtitle: '★ 4.2 (127 отзывов)',
           ),
           _DetailRow(
             icon: Icons.location_on_rounded,
             iconColor: AppColors.error,
             label: 'Аудитория',
             value: '${lesson.room}, ${lesson.building}',
-            subtitle: '350м • 5 мин пешком',
+            // subtitle: '350м • 5 мин пешком',
           ),
           const SizedBox(height: 24),
           Row(
             children: [
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: theme.colorScheme.primary,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Построить маршрут'),
-                ),
-              ),
+              // Expanded(
+              //   child: ElevatedButton(
+              //     onPressed: () => Navigator.pop(context),
+              //     style: ElevatedButton.styleFrom(
+              //       backgroundColor: theme.colorScheme.primary,
+              //       foregroundColor: theme.colorScheme.onPrimary,
+              //       padding: const EdgeInsets.symmetric(vertical: 12),
+              //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              //     ),
+              //     child: const Text('Построить маршрут'),
+              //   ),
+              // ),
               const SizedBox(width: 12),
               Expanded(
                 child: OutlinedButton(
@@ -927,212 +1120,3 @@ class _DetailRow extends StatelessWidget {
   }
 }
 
-class _NewEventForm {
-  String title = '';
-  String type = 'personal';
-  String time = '';
-  String room = '';
-  String notes = '';
-
-  void reset() {
-    title = '';
-    type = 'personal';
-    time = '';
-    room = '';
-    notes = '';
-  }
-}
-
-class _AddEventDialog extends StatefulWidget {
-  final _NewEventForm form;
-  final VoidCallback onCancel;
-  final VoidCallback onSave;
-
-  const _AddEventDialog({
-    required this.form,
-    required this.onCancel,
-    required this.onSave,
-  });
-
-  @override
-  State<_AddEventDialog> createState() => _AddEventDialogState();
-}
-
-class _AddEventDialogState extends State<_AddEventDialog> {
-  late TextEditingController _titleController;
-  late TextEditingController _roomController;
-  late TextEditingController _notesController;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.form.title);
-    _roomController = TextEditingController(text: widget.form.room);
-    _notesController = TextEditingController(text: widget.form.notes);
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _roomController.dispose();
-    _notesController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final types = [
-      (id: 'personal', label: 'Личное', color: AppColors.success),
-      (id: 'meeting', label: 'Встреча', color: AppColors.primaryLight),
-      (id: 'exam', label: 'Экзамен', color: AppColors.error),
-      (id: 'other', label: 'Другое', color: AppColors.warning),
-    ];
-    return Dialog(
-      backgroundColor: theme.dialogBackgroundColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.radiusLg)),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Добавить событие',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('Название', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  hintText: 'Встреча, задача, экзамен...',
-                ),
-                onChanged: (v) => widget.form.title = v,
-              ),
-              const SizedBox(height: 16),
-              Text('Тип', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-              const SizedBox(height: 8),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 2.2,
-                children: types.map((t) => Material(
-                  color: widget.form.type == t.id ? theme.colorScheme.primary.withValues(alpha: 0.15) : theme.cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () => setState(() => widget.form.type = t.id),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: widget.form.type == t.id ? theme.colorScheme.primary : theme.dividerColor,
-                          width: 2,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(color: t.color, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(t.label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                    ),
-                  ),
-                )).toList(),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Время', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          decoration: const InputDecoration(hintText: '--:--'),
-                          onChanged: (v) => widget.form.time = v,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Аудитория', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _roomController,
-                          decoration: const InputDecoration(hintText: '312'),
-                          onChanged: (v) => widget.form.room = v,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text('Заметки', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _notesController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Дополнительная информация...',
-                  alignLabelWithHint: true,
-                ),
-                onChanged: (v) => widget.form.notes = v,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: widget.onCancel,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.radiusMd)),
-                    ),
-                      child: const Text('Отмена'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: widget.onSave,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Добавить'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}

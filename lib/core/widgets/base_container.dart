@@ -11,6 +11,7 @@ class BaseContainer extends StatelessWidget {
   final EdgeInsetsGeometry? margin;
   final Color? backgroundColor;
   final bool isGlass;
+  final bool shadow;
 
   const BaseContainer({
     super.key,
@@ -21,6 +22,7 @@ class BaseContainer extends StatelessWidget {
     this.margin,
     this.backgroundColor,
     this.isGlass = false,
+    this.shadow = true
   });
 
   @override
@@ -44,10 +46,11 @@ class BaseContainer extends StatelessWidget {
               ? Colors.white.withOpacity(isDark ? 0.18 : 0.35)
               : (isDark ? theme.colorScheme.outline : const Color(0xFFE2E8F0)),
         ),
-        boxShadow: isGlass || isDark
+        
+        boxShadow: isGlass || isDark || !shadow
             ? null
-            : const [
-                BoxShadow(
+            :  [ 
+               const BoxShadow(
                   color: Color.fromARGB(80, 148, 163, 184),
                   blurRadius: 16,
                   offset: Offset(0, 8),

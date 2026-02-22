@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
+import '../core/services/task_service.dart';
 import '../core/widgets/base_container.dart';
-import '../data/mock_data.dart';
-import '../models/task.dart';
+import '../models/personal_task.dart';
 import '../widgets/app_progress.dart';
+import '../widgets/personal_task_card.dart';
 
 /// Профиль
 class ProfileScreen extends StatefulWidget {
@@ -15,14 +17,71 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  List<Task> _taskList = MockData.tasks;
+  List<PersonalTask> _taskList = [];
 
-  void _toggleTask(String id) {
-    setState(() {
-      _taskList = _taskList
-          .map((t) => t.id == id ? t.copyWith(completed: !t.completed) : t)
-          .toList();
-    });
+  @override
+  void initState() {
+    super.initState();
+    TaskService.instance.addListener(_onTasksChanged);
+    _loadTasks();
+  }
+
+  @override
+  void dispose() {
+    TaskService.instance.removeListener(_onTasksChanged);
+    super.dispose();
+  }
+
+  void _onTasksChanged() => _loadTasks();
+
+  Future<void> _loadTasks() async {
+    final tasks = await TaskService.instance.getTodayAndTomorrowTasks();
+    if (mounted) setState(() => _taskList = tasks);
+  }
+
+  Future<void> _toggleTask(String id) async {
+    await TaskService.instance.toggleCompleted(id);
+    _loadTasks();
+  }
+
+  Future<void> _confirmDeleteTask(BuildContext context, PersonalTask task) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Удалить задачу?'),
+        content: Text('«${task.title}» будет удалена.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: const Text('Отмена'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(
+              'Удалить',
+              style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      try {
+        await TaskService.instance.deleteTask(task.id);
+        await _loadTasks();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Задача удалена')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Ошибка удаления: $e')),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -45,61 +104,61 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          SliverToBoxAdapter(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(24),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 40,
-                    backgroundColor: theme.colorScheme.primaryContainer,
-                    child: Icon(
-                      Icons.person_rounded,
-                      size: 40,
-                      color: theme.colorScheme.onPrimaryContainer,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Иван Петров',
-                          style: theme.textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                            color: theme.colorScheme.onSurface,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'ИУ5-31б',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            Icon(Icons.emoji_events_rounded, size: 16, color: theme.colorScheme.tertiary),
-                            const SizedBox(width: 8),
-                            Text(
-                              'Активный студент',
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                fontWeight: FontWeight.w600,
-                                color: theme.colorScheme.onSurfaceVariant,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
+          // SliverToBoxAdapter(
+          //   child: Container(
+          //     width: double.infinity,
+          //     padding: const EdgeInsets.all(24),
+          //     child: Row(
+          //       children: [
+          //         CircleAvatar(
+          //           radius: 40,
+          //           backgroundColor: theme.colorScheme.primaryContainer,
+          //           child: Icon(
+          //             Icons.person_rounded,
+          //             size: 40,
+          //             color: theme.colorScheme.onPrimaryContainer,
+          //           ),
+          //         ),
+          //         const SizedBox(width: 16),
+          //         Expanded(
+          //           child: Column(
+          //             crossAxisAlignment: CrossAxisAlignment.start,
+          //             children: [
+          //               Text(
+          //                 'Иван Петров',
+          //                 style: theme.textTheme.titleLarge?.copyWith(
+          //                   fontWeight: FontWeight.bold,
+          //                   color: theme.colorScheme.onSurface,
+          //                 ),
+          //               ),
+          //               const SizedBox(height: 4),
+          //               Text(
+          //                 'ИУ5-31б',
+          //                 style: theme.textTheme.bodyMedium?.copyWith(
+          //                   color: theme.colorScheme.onSurfaceVariant,
+          //                 ),
+          //               ),
+          //               const SizedBox(height: 8),
+          //               Row(
+          //                 children: [
+          //                   Icon(Icons.emoji_events_rounded, size: 16, color: theme.colorScheme.tertiary),
+          //                   const SizedBox(width: 8),
+          //                   Text(
+          //                     'Активный студент',
+          //                     style: theme.textTheme.bodySmall?.copyWith(
+          //                       fontWeight: FontWeight.w600,
+          //                       color: theme.colorScheme.onSurfaceVariant,
+          //                     ),
+          //                   ),
+          //                 ],
+          //               ),
+          //             ],
+          //           ),
+          //         ),
+          //       ],
+          //     ),
+          //   ),
+          // ),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
@@ -188,6 +247,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildTasksSection(int completedTasks, int totalTasks, int completionRate) {
     final theme = Theme.of(context);
+    final grouped = _groupTasksByDate(_taskList);
+
     return BaseContainer(
       padding: const EdgeInsets.all(16),
       child: Column(
@@ -227,13 +288,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-          ..._taskList.map((task) => _TaskTile(
-            task: task,
-            onTap: () => _toggleTask(task.id),
-          )),
+          ...grouped.entries.expand((e) => [
+            Padding(
+              padding: const EdgeInsets.only(top: 8, bottom: 4),
+              child: Text(
+                _formatDateLabel(e.key),
+                style: theme.textTheme.labelMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+            ...e.value.map((task) => Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: PersonalTaskCard(
+                task: task,
+                showCompletedToggle: true,
+                onToggleCompleted: () => _toggleTask(task.id),
+                onDelete: () => _confirmDeleteTask(context, task),
+              ),
+            )),
+          ]),
         ],
       ),
     );
+  }
+
+  Map<String, List<PersonalTask>> _groupTasksByDate(List<PersonalTask> tasks) {
+    final map = <String, List<PersonalTask>>{};
+    for (final t in tasks) {
+      map.putIfAbsent(t.date, () => []).add(t);
+    }
+    for (final list in map.values) {
+      list.sort((a, b) => a.time.compareTo(b.time));
+    }
+    return map;
+  }
+
+  String _formatDateLabel(String dateStr) {
+    final parts = dateStr.split('-');
+    if (parts.length != 3) return dateStr;
+    final d = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final tomorrow = today.add(const Duration(days: 1));
+    if (d == today) return 'Сегодня';
+    if (d == tomorrow) return 'Завтра';
+    return DateFormat('d MMM', 'ru').format(d);
   }
 
   Widget _buildAchievements() {
@@ -312,75 +413,3 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-class _TaskTile extends StatelessWidget {
-  final Task task;
-  final VoidCallback onTap;
-
-  const _TaskTile({required this.task, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isUrgent = task.deadline == 'сегодня' || task.deadline == 'завтра';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Material(
-        color: task.completed
-            ? AppColors.success.withValues(alpha: 0.1)
-            : theme.scaffoldBackgroundColor,
-        borderRadius: BorderRadius.circular(12),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(
-                color: task.completed
-                    ? AppColors.success.withValues(alpha: 0.3)
-                    : theme.dividerColor,
-              ),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(
-                  task.completed ? Icons.check_circle_rounded : Icons.radio_button_unchecked_rounded,
-                  size: 20,
-                  color: task.completed ? AppColors.success : theme.dividerColor,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        task.title,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: task.completed
-                              ? theme.colorScheme.onSurfaceVariant
-                              : theme.colorScheme.onSurface,
-                          decoration: task.completed ? TextDecoration.lineThrough : null,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        task.deadline,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: isUrgent ? AppColors.error : theme.colorScheme.onSurfaceVariant,
-                          fontWeight: isUrgent ? FontWeight.w600 : FontWeight.normal,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
