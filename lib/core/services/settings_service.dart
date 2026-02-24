@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Ключи настроек (хранение в памяти)
 abstract class PrefsKeys {
   static const themeMode = 'theme_mode';
   static const accentColorValue = 'accent_color_value';
@@ -9,7 +8,6 @@ abstract class PrefsKeys {
   static const defaultTeacherId = 'default_teacher_id';
 }
 
-/// Сервис настроек в памяти (без CocoaPods/SharedPreferences)
 class SettingsService {
   static final Map<String, Object> _store = {};
 

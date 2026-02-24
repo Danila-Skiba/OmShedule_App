@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import 'package:omstu_schedule/core/widgets/base_container.dart';
+import 'package:omstu_schedule/widgets/base_container.dart';
+import 'package:omstu_schedule/data/schedule_data.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 import '../core/services/settings_service.dart';
@@ -8,12 +9,12 @@ import '../core/services/task_service.dart';
 import '../core/state/filter_controller.dart';
 import '../core/state/schedule_week_controller.dart';
 import '../core/utils/week_service.dart';
-import '../data/schedule_mock_data.dart';
 import '../models/lesson.dart';
 import '../models/personal_task.dart';
 import '../models/schedule_type.dart';
 import '../widgets/add_task_dialog.dart';
 import '../widgets/personal_task_card.dart';
+
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -75,21 +76,21 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   /// Передаёт в репозиторий только выбранный фильтр — без суммирования.
   void _syncFiltersToController() {
     final ft = _filterController.currentFilterType.value;
-    Set<String>? groupIds;
-    Set<String>? teacherNames;
-    Set<String>? roomIds;
+    String? groupIds;
+    String? teacherNames;
+    String? roomIds;
     switch (ft) {
       case FilterType.group:
         final v = _filterController.selectedGroup.value;
-        groupIds = v != null ? {v} : null;
+        groupIds = v;
         break;
       case FilterType.teacher:
         final v = _filterController.selectedTeacher.value;
-        teacherNames = v != null ? {v} : null;
+        teacherNames = v;
         break;
       case FilterType.audience:
         final v = _filterController.selectedAudience.value;
-        roomIds = v != null ? {v} : null;
+        roomIds = v;
         break;
       case FilterType.personal:
         break;
@@ -106,7 +107,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (role == 'student') {
       _scheduleType = ScheduleType.group;
       _filterController.updateGroup(
-        SettingsService.getDefaultGroupId() ?? ScheduleMockData.groupIds.first,
+        SettingsService.getDefaultGroupId() ?? ScheduleData.groups.keys.first,
       );
       _filterController.updateTeacher(null);
       _filterController.updateAudience(null);
@@ -114,7 +115,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _scheduleType = ScheduleType.teacher;
       _filterController.updateTeacher(
         SettingsService.getDefaultTeacherId() ??
-            ScheduleMockData.teacherNames.first,
+            ScheduleData.teachers.keys.first,
       );
       _filterController.updateGroup(null);
       _filterController.updateAudience(null);
@@ -886,10 +887,12 @@ List<Color> _lessonTypeColor(LessonType type) {
       return [AppColors.primaryLight,AppColors.hintprimary];
     case LessonType.lab:
       return [AppColors.warning, AppColors.hintwarning];
-    case LessonType.exam:
+    case LessonType.retake:
       return [AppColors.error, AppColors.hinterror];
+    case LessonType.practice:
+      return [const Color.fromARGB(255, 26, 223, 157),AppColors.hintsuccess];
     case LessonType.personal:
-      return [AppColors.success,AppColors.hintsuccess];
+      return [AppColors.primaryLight,AppColors.hintprimary];
   }
 }
 
@@ -949,7 +952,7 @@ class _LessonCard extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(
-              lesson.subject,
+              lesson.subject??'', 
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: theme.colorScheme.onSurface,
@@ -992,7 +995,7 @@ class _LessonDetailsSheet extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            lesson.subject,
+            lesson.subject?? '',
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
               color: theme.colorScheme.primary,
@@ -1009,7 +1012,7 @@ class _LessonDetailsSheet extends StatelessWidget {
             icon: Icons.person_rounded,
             iconColor: AppColors.success,
             label: 'Преподаватель',
-            value: lesson.teacher,
+            value: lesson.teacher?? '',
             // subtitle: '★ 4.2 (127 отзывов)',
           ),
           _DetailRow(
@@ -1067,7 +1070,7 @@ class _DetailRow extends StatelessWidget {
     required this.iconColor,
     required this.label,
     required this.value,
-    this.subtitle,
+    this.subtitle
   });
 
   @override

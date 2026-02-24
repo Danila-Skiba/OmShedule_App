@@ -19,7 +19,7 @@ class ScheduleWeekController extends ChangeNotifier {
   ScheduleWeekController({
     ScheduleRepository? repository,
     DateTime? initialDate,
-  })  : _repository = repository ?? ScheduleRepositoryImpl(),
+  })  : _repository = repository ?? ApiClient(),
         _selectedDate = initialDate ?? DateTime.now(),
         _currentWeek = WeekService.getWeekForDate(initialDate ?? DateTime.now()) {
     _loadSchedule();
@@ -48,14 +48,14 @@ class ScheduleWeekController extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
 
   /// Фильтры для загрузки расписания.
-  Set<String>? _groupIds;
-  Set<String>? _teacherNames;
-  Set<String>? _roomIds;
+  String? _groupIds;
+  String? _teacherNames;
+  String? _roomIds;
 
   void setFilters({
-    Set<String>? groupIds,
-    Set<String>? teacherNames,
-    Set<String>? roomIds,
+    String? groupIds,
+    String? teacherNames,
+    String? roomIds,
   }) {
     _groupIds = groupIds;
     _teacherNames = teacherNames;
@@ -106,7 +106,7 @@ class ScheduleWeekController extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
 
-    final result = await _repository.loadScheduleForWeek(
+    final result = await _repository.loadFromApi(
       _currentWeek,
       groupIds: _groupIds,
       teacherNames: _teacherNames,

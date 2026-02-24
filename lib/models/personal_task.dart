@@ -3,9 +3,9 @@
 class PersonalTask {
   final String id;
   final String title;
-  /// Время в формате HH:mm (обязательное).
+  /// Время в формате HH:mm 
   final String time;
-  /// Аудитория/место (опционально, может быть пустым).
+  /// Аудитория/место 
   final String? audience;
   /// Дата в формате yyyy-MM-dd.
   final String date;

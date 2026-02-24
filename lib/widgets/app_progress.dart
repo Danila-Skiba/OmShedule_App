@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
 
-/// Линейный прогресс (эквивалент Progress из progress.tsx Radix UI)
+/// Линейный прогресс
 class AppProgress extends StatelessWidget {
-  final double value; // 0.0 - 100.0
+  final double value;
   final double height;
 
   const AppProgress({

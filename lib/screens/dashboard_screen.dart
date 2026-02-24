@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:omstu_schedule/core/services/schedule_repository.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
-import '../core/widgets/base_container.dart';
+import '../widgets/base_container.dart';
 import '../data/mock_data.dart';
 import '../models/lesson.dart';
 import '../models/news.dart';
@@ -14,18 +15,18 @@ const _monthNames = [
 ];
 const _weekDayNames = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 
-/// Главная страница
+/// Главная страница TODO: подтягивание текущего расписания с помощью API или кеширования
 class DashboardScreen extends StatelessWidget {
   const DashboardScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
     final today = DateTime.now().weekday; // 1=Mon .. 7=Sun, в mock ПН=1
-    final todayLessons = MockData.lessons.where((l) => l.dayOfWeek == today).toList();
-    final completedTasks = MockData.tasks.where((t) => t.completed).length;
-    final totalTasks = MockData.tasks.length;
-    final nextLesson = todayLessons.isNotEmpty ? todayLessons.first : null;
-    const minutesToNext = 14;
+    // final todayLessons = ApiClient.instance.lessons.where((l) => l.dayOfWeek == today).toList();
+    // final completedTasks = MockData.tasks.where((t) => t.completed).length;
+    // final totalTasks = MockData.tasks.length;
+    // final nextLesson = todayLessons.isNotEmpty ? todayLessons.first : null;
+    // const minutesToNext = 14;
 
     final theme = Theme.of(context);
     return Scaffold(
@@ -37,9 +38,9 @@ class DashboardScreen extends StatelessWidget {
               delegate: SliverChildListDelegate([
                 // _buildQuickActions(context, nextLesson),
                 const SizedBox(height: 16),
-                _buildStatsRow(completedTasks, totalTasks, minutesToNext),
+                // _buildStatsRow(completedTasks, totalTasks, minutesToNext),
                 const SizedBox(height: 16),
-                _buildScheduleSection(context, todayLessons),
+                // _buildScheduleSection(context, todayLessons),
                 const SizedBox(height: 16),
                 _buildNewsSection(),
                 const SizedBox(height: 100)
@@ -552,7 +553,7 @@ class _ScheduleRow extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  lesson.subject,
+                  lesson.subject?? '',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,

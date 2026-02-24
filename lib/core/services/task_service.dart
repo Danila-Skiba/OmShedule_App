@@ -26,7 +26,6 @@ class TaskService extends ChangeNotifier {
   }
 
   /// Загружает все задачи из JSON. Кеширует результат.
-  /// При повреждённом JSON создаёт новый файл с пустым списком.
   Future<List<PersonalTask>> _loadAll() async {
     if (_loaded) return List.from(_cache);
     try {
@@ -50,7 +49,6 @@ class TaskService extends ChangeNotifier {
       try {
         await _saveAll([]);
       } catch (_) {
-        // игнорируем ошибку записи
       }
       return [];
     }
@@ -90,7 +88,7 @@ class TaskService extends ChangeNotifier {
     return result;
   }
 
-  /// Задачи на сегодня и завтра (для профиля "Мои задачи").
+  /// Задачи на сегодня и завтра
   Future<List<PersonalTask>> getTodayAndTomorrowTasks() async {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
@@ -137,7 +135,7 @@ class TaskService extends ChangeNotifier {
     return dc != 0 ? dc : a.time.compareTo(b.time);
   }
 
-  /// Сбросить кеш (например, после внешнего изменения файла).
+  /// Сбросить кеш
   void invalidateCache() {
     _loaded = false;
   }

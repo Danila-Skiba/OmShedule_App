@@ -1,13 +1,12 @@
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../core/theme/theme_notifier.dart';
-import '../core/widgets/base_container.dart';
+import '../widgets/base_container.dart';
 import '../widgets/app_switch.dart';
 
-/// Настройки (эквивалент Settings.tsx)
+/// Настройки 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
 
@@ -61,43 +60,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-
-  // Widget _buildHeader(BuildContext context) {
-  //   final theme = Theme.of(context);
-  //   return AppBar(
-  //     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-  //     decoration: BoxDecoration(
-  //       color: theme.colorScheme.primary,
-  //       boxShadow: [
-  //         BoxShadow(
-  //           color: Colors.black.withValues(alpha: 0.26),
-  //           blurRadius: 8,
-  //           offset: const Offset(0, 2),
-  //         ),
-  //       ],
-  //     ),
-  //     child: SafeArea(
-  //       bottom: false,
-  //       child: Row(
-  //         children: [
-  //           IconButton(
-  //             icon: const Icon(Icons.arrow_back_rounded, color: Colors.white, size: 20),
-  //             onPressed: () => context.pop(),
-  //           ),
-  //           const SizedBox(width: 8),
-  //           const Text(
-  //             'Настройки',
-  //             style: TextStyle(
-  //               fontSize: 18,
-  //               fontWeight: FontWeight.bold,
-  //               color: Colors.white,
-  //             ),
-  //           ),
-  //         ],
-  //       ),
-  //     ),
-  //   );
-  // }
 
   Widget _buildAppearanceSection() {
     final themeNotifier = context.watch<ThemeNotifier>();
