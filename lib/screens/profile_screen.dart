@@ -3,7 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../core/services/task_service.dart';
-import '../core/widgets/base_container.dart';
+import '../widgets/base_container.dart';
 import '../models/personal_task.dart';
 import '../widgets/app_progress.dart';
 import '../widgets/personal_task_card.dart';

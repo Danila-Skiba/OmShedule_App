@@ -1,5 +1,4 @@
 import 'package:omstu_schedule/data/schedule_data.dart';
-import '../../data/schedule_mock_data.dart';
 import '../../models/lesson.dart';
 import '../../models/week_period.dart';
 import 'dart:convert';
@@ -35,9 +34,9 @@ class ApiClient implements ScheduleRepository {
           throw Exception('Failed to load schedule');
         }
         final List<dynamic> json = jsonDecode(response.body) as List<dynamic>;
-        print(json);
+    
         final lessons = json.map((lesson)=>Lesson.fromJson(lesson)).toList();
-        print(lessons);
+
         return ScheduleLoadResult(lessons: lessons);
       } catch (e) {
         return ScheduleLoadResult(
