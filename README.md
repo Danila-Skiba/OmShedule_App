@@ -6,14 +6,14 @@
 
 ```
 lib/
-├── main.dart              # Точка входа (аналог main.tsx + App.tsx)
-├── app_router.dart        # Маршруты (go_router, аналог routes.tsx)
+├── main.dart              # Точка входа
+├── app_router.dart        # Маршруты (go_router)
 ├── theme/
-│   └── app_theme.dart     # Тема (аналог theme.css + Tailwind)
+│   └── app_theme.dart     # Тема 
 ├── constants/
-│   ├── app_colors.dart    # Цвета (#F8FAFC, #1E3A8A и т.д.)
+│   ├── app_colors.dart    # Цвета 
 │   └── app_strings.dart   # Строки
-├── models/                # TypeScript interfaces → Dart классы
+├── models/                # Dart классы
 │   ├── lesson.dart
 │   ├── task.dart
 │   ├── news.dart
@@ -21,10 +21,10 @@ lib/
 │   ├── building.dart
 │   └── chat_message.dart
 ├── data/
-│   └── mock_data.dart     # Порт mockData.ts
+│   └── mock_data.dart     # Порт 
 ├── layouts/
-│   └── mobile_layout.dart # Нижняя навигация (MobileLayout.tsx)
-├── screens/               # Страницы React → Flutter
+│   └── mobile_layout.dart # Нижняя навигация
+├── screens/               # Страницы Flutter
 │   ├── dashboard_screen.dart
 │   ├── schedule_screen.dart
 │   ├── maps_screen.dart
@@ -32,8 +32,8 @@ lib/
 │   ├── chat_screen.dart
 │   └── settings_screen.dart
 └── widgets/               # UI-компоненты
-    ├── app_progress.dart  # Progress (Radix)
-    └── app_switch.dart    # Switch (Radix)
+    ├── app_progress.dart  # Progress 
+    └── app_switch.dart    # Switch 
 ```
 
 ## Запуск
