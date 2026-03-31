@@ -48,9 +48,9 @@ class ApiClient implements ScheduleRepository {
   }
 
   String _getEndPoint(String? groupIds, String? teacherNames,  String? roomIds) {
-    if (groupIds != null) return 'group/${ScheduleData.groups[groupIds]}';
-    if (teacherNames != null) return 'person/${ScheduleData.teachers[teacherNames]}';
-    if (roomIds != null) return 'auditorium/${ScheduleData.rooms[roomIds]}';
+    if (groupIds != null) return 'group/${ScheduleData.getgroups[groupIds]}';
+    if (teacherNames != null) return 'person/${ScheduleData.getpersons[teacherNames]}';
+    if (roomIds != null) return 'auditorium/${ScheduleData.getauditorium[roomIds]}';
     return '';
   }
 }

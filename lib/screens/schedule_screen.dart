@@ -107,7 +107,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (role == 'student') {
       _scheduleType = ScheduleType.group;
       _filterController.updateGroup(
-        SettingsService.getDefaultGroupId() ?? ScheduleData.groups.keys.first,
+      ScheduleData.getgroups.keys.first,
       );
       _filterController.updateTeacher(null);
       _filterController.updateAudience(null);
@@ -115,7 +115,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       _scheduleType = ScheduleType.teacher;
       _filterController.updateTeacher(
         SettingsService.getDefaultTeacherId() ??
-            ScheduleData.teachers.keys.first,
+            ScheduleData.getpersons.keys.first,
       );
       _filterController.updateGroup(null);
       _filterController.updateAudience(null);
@@ -701,7 +701,7 @@ Widget _buildSegmentButton({
           ),
           const SizedBox(height: 16),
           Text(
-            _weekController.errorMessage ?? 'Не удалось загрузить расписание',
+            'Не удалось загрузить расписание',
             textAlign: TextAlign.center,
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
@@ -1038,18 +1038,18 @@ class _LessonDetailsSheet extends StatelessWidget {
               //   ),
               // ),
               const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton(
-                  onPressed: () => Navigator.pop(context),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: theme.colorScheme.primary,
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                    side: BorderSide(color: theme.dividerColor),
-                  ),
-                  child: const Text('Отметить посещение'),
-                ),
-              ),
+              // Expanded(
+              //   child: OutlinedButton(
+              //     onPressed: () => Navigator.pop(context),
+              //     style: OutlinedButton.styleFrom(
+              //       foregroundColor: theme.colorScheme.primary,
+              //       padding: const EdgeInsets.symmetric(vertical: 12),
+              //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              //       side: BorderSide(color: theme.dividerColor),
+              //     ),
+              //     child: const Text('Отметить посещение'),
+              //   ),
+              // ),
             ],
           ),
         ],
@@ -1063,14 +1063,12 @@ class _DetailRow extends StatelessWidget {
   final Color iconColor;
   final String label;
   final String value;
-  final String? subtitle;
-
   const _DetailRow({
     required this.icon,
     required this.iconColor,
     required this.label,
     required this.value,
-    this.subtitle
+
   });
 
   @override
@@ -1107,13 +1105,13 @@ class _DetailRow extends StatelessWidget {
                     color: Theme.of(context).colorScheme.onSurface,
                   ),
                 ),
-                if (subtitle != null)
-                  Text(
-                    subtitle!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
-                  ),
+                // if (subtitle != null)
+                //   Text(
+                //     subtitle!,
+                //     style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                //       color: Theme.of(context).colorScheme.onSurfaceVariant,
+                //     ),
+                //   ),
               ],
             ),
           ),

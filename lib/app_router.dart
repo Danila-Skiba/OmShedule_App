@@ -48,8 +48,7 @@ final GoRouter appRouter = GoRouter(
                   child: SelectScreen(
                     type: SelectType.group,
                     title: 'Выберите группу',
-                    items: ScheduleData.groups.keys.toList(),
-                    selectedId: selected,
+                    items: ScheduleData.getgroups.keys.toList(),              selectedId: selected,
                   ),
                 );
               },
@@ -63,7 +62,7 @@ final GoRouter appRouter = GoRouter(
                   child: SelectScreen(
                     type: SelectType.teacher,
                     title: 'Выберите преподавателя',
-                    items: ScheduleData.teachers.keys.toList(),
+                    items: ScheduleData.getpersons.keys.toList(),
                     selectedId: selected,
                   ),
                 );
@@ -88,7 +87,7 @@ final GoRouter appRouter = GoRouter(
                   child: SelectScreen(
                     type: SelectType.room,
                     title: 'Выберите аудиторию',
-                    items: ScheduleData.rooms.keys.toList(),
+                    items: ScheduleData.getauditorium.keys.toList(),
                     selectedId: selected,
                   ),
                 );

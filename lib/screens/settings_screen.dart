@@ -45,12 +45,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 _buildAppearanceSection(),
-                const SizedBox(height: 16),
-                _buildNotificationsSection(),
-                const SizedBox(height: 16),
-                _buildLanguageSection(),
-                const SizedBox(height: 16),
-                _buildAccountSection(),
+                // const SizedBox(height: 16),
+                // _buildNotificationsSection(),
+                // const SizedBox(height: 16),
+                // _buildLanguageSection(),
+                // const SizedBox(height: 16),
+                // _buildAccountSection(),
                 const SizedBox(height: 24),
                 _buildAppInfo(),
               ]),

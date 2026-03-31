@@ -3,5 +3,5 @@ class AppStrings {
   AppStrings._();
 
   static const String appName = 'Расписание ОмГТУ';
-  static const String appVersion = '1.0.0';
+  static const String appVersion = 'alpha 0.0.1';
 }
