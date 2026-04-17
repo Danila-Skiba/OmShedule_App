@@ -11,8 +11,8 @@ import '../widgets/app_progress.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 
-// const _host = '172.20.10.8'; //localhost
-const _host = 'localhost';
+const _host = '172.20.10.8'; //localhost
+// const _host = 'localhost';
 
 const _monthNames = [
   'января', 'февраля', 'марта', 'апреля', 'мая', 'июня',
@@ -724,7 +724,7 @@ class _NewsCard extends StatelessWidget {
                 fit: StackFit.expand,
                 children: [
                   CachedNetworkImage(
-                    imageUrl: 'http://${_host}:8000/api/news/images/${news.id}',
+                    imageUrl: 'http://$_host:8000/api/news/images/${news.id}',
                     fit: BoxFit.cover,
                     alignment: Alignment.center,
                     placeholder: (context, url) => Container(

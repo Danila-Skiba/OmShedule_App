@@ -31,6 +31,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   late FilterController _filterController;
   List<PersonalTask> _tasks = [];
 
+  ScheduleType get currentScheduleType {
+  final filterType = _filterController.currentFilterType.value;
+  if (filterType == FilterType.group) return ScheduleType.group;
+  if (filterType == FilterType.teacher) return ScheduleType.teacher;
+  if (filterType == FilterType.audience) return ScheduleType.audience;
+  return ScheduleType.group;
+}
+
   @override
   void initState() {
     super.initState();
@@ -646,6 +654,7 @@ Widget _buildSegmentButton({
                 builder: (_) => _LessonDetailsSheet(lesson: l),
               );
             },
+            type: currentScheduleType
           ),
         )));
       }
@@ -742,10 +751,11 @@ Widget _buildSegmentButton({
               builder: (_) => _LessonDetailsSheet(lesson: l),
             );
           },
+          type:currentScheduleType
         ),
       )));
     }
-    // Личные задачи — только на вкладке «Личное».
+
     if (isPersonal) {
       for (final t in dayTasks) {
         merged.add((time: t.time, widget: Padding(
@@ -757,6 +767,24 @@ Widget _buildSegmentButton({
         )));
       }
     }
+
+    if (merged.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(bottom: 16),
+          child: Center(
+            child: Text(
+              isPersonal ? 'Задач нет' : 'Занятий нет',
+              style: TextStyle(
+                fontSize: 14,
+                color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     merged.sort((a, b) => a.time.compareTo(b.time));
 
     return SliverList(
@@ -899,13 +927,20 @@ List<Color> _lessonTypeColor(LessonType type) {
 class _LessonCard extends StatelessWidget {
   final Lesson lesson;
   final VoidCallback onTap;
+  final ScheduleType type; // group, teacher, audience
 
-  const _LessonCard({required this.lesson, required this.onTap});
+  const _LessonCard({
+    required this.lesson,
+    required this.onTap,
+    required this.type,
+  });
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final color = _lessonTypeColor(lesson.type);
+    final hasSubgroup = lesson.subgroup != null && lesson.subgroup!.isNotEmpty;
+
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -927,6 +962,7 @@ class _LessonCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Время + тип + подгруппа
             Row(
               children: [
                 Text(
@@ -948,21 +984,104 @@ class _LessonCard extends StatelessWidget {
                     style: TextStyle(fontSize: 12, color: color[0]),
                   ),
                 ),
+                if (hasSubgroup) ...[
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: color[0].withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(999),
+                      border: Border.all(
+                        color: color[0].withValues(alpha: 0.3),
+                        width: 0.5,
+                      ),
+                    ),
+                    child: Text(
+                      'Подгр. ${lesson.subgroup![lesson.subgroup!.length - 1]}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w500,
+                        color: color[0],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
+
             const SizedBox(height: 4),
+
+            // Название предмета
             Text(
-              lesson.subject??'', 
+              lesson.subject ?? '',
               style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.w600,
                 color: theme.colorScheme.onSurface,
               ),
             ),
-            Text(
-              '${lesson.teacher} • ${lesson.room}',
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.8),
-              ),
+
+            const SizedBox(height: 8),
+
+            // Преподаватель и/или Аудитория
+            Row(
+              children: [
+                // Показываем преподавателя, если это НЕ расписание преподавателя
+                if (type != ScheduleType.teacher && lesson.teacher?.isNotEmpty == true) ...[
+                  Icon(
+                    Icons.person_outline,
+                    size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      lesson.teacher!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+
+                if (type != ScheduleType.group) ...[
+                  Icon(
+                    Icons.group_outlined,
+                    size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      lesson.group ?? lesson.subgroup ?? lesson.stream ?? '', 
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+
+                // Показываем аудиторию, если это НЕ расписание аудитории
+                if (type != ScheduleType.audience && lesson.room?.isNotEmpty == true) ...[
+                  Icon(
+                    Icons.location_on_outlined,
+                    size: 16,
+                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
+                  ),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      lesson.room!,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
+              ],
             ),
           ],
         ),
@@ -1015,6 +1134,7 @@ class _LessonDetailsSheet extends StatelessWidget {
             value: lesson.teacher?? '',
             // subtitle: '★ 4.2 (127 отзывов)',
           ),
+          _DetailRow(icon: Icons.group_rounded, iconColor: AppColors.primaryLight, label: 'Группа', value: lesson.group?? lesson.subgroup?? lesson.stream?? ''),
           _DetailRow(
             icon: Icons.location_on_rounded,
             iconColor: AppColors.error,
@@ -1022,8 +1142,9 @@ class _LessonDetailsSheet extends StatelessWidget {
             value: '${lesson.room}, ${lesson.building}',
             // subtitle: '350м • 5 мин пешком',
           ),
+          
           const SizedBox(height: 24),
-          Row(
+          const Row(
             children: [
               // Expanded(
               //   child: ElevatedButton(
@@ -1037,7 +1158,7 @@ class _LessonDetailsSheet extends StatelessWidget {
               //     child: const Text('Построить маршрут'),
               //   ),
               // ),
-              const SizedBox(width: 12),
+              SizedBox(width: 12),
               // Expanded(
               //   child: OutlinedButton(
               //     onPressed: () => Navigator.pop(context),

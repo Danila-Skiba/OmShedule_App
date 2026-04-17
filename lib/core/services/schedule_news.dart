@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http ;
 import 'package:omstu_schedule/models/news.dart';
 
-// const _host = '172.20.10.8'; //localhost
-const _host = 'localhost';
+const _host = '172.20.10.8'; //localhost
+// const _host = 'localhost';
 
 abstract class NewsRepository {
   Future<NewsLoadResult> getNews();
@@ -11,7 +11,7 @@ abstract class NewsRepository {
 
 class NewsRepositoryImpl extends NewsRepository {
 
-  final String baseUrl = 'http://${_host}:8000/api/news/';
+  final String baseUrl = 'http://$_host:8000/api/news/';
   final http.Client client; 
 
   NewsRepositoryImpl({http.Client? client}) : client = client ?? http.Client();

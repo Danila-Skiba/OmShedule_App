@@ -26,10 +26,10 @@ class Lesson {
   final String timeEnd;
   final int dayOfWeek;
   final String? date;
+  final String? subgroup;
   // final LessonStatus? status;
   // final String? groupId;
   final String? group;
-  final String? subgroup;
   final String? stream;
   // final String? group;
 
