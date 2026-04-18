@@ -251,59 +251,41 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       appBar: _buildHeader(),
       body: Stack(
         children: [
-          GestureDetector(
-            behavior: HitTestBehavior.translucent,
-            onHorizontalDragEnd: isToday
-                ? (d) {
-                    if (d.primaryVelocity == null) return;
-                    if (d.primaryVelocity! > 200) {
-                      _goToPreviousDay();
-                    } else if (d.primaryVelocity! < -200) {
-                      _goToNextDay();
-                    }
-                  }
-                : null,
-            child: CustomScrollView(
-            slivers: [
-              // Scrolls away on scroll-down
-              SliverToBoxAdapter(child: _buildFilterBar()),
-              SliverToBoxAdapter(child: _buildFilterIndicator()),
-              // In "today" mode — pin the segmented control + day strip.
-              // In "week" mode — regular sliver (scrolls away with content).
-              if (isToday)
-                SliverPersistentHeader(
-                  pinned: true,
-                  delegate: _StickyControlsDelegate(
-                    extent: 215,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _buildSegmentedControl(),
-                        _buildCalendarStrip(),
-                      ],
-                    ),
-                  ),
-                )
-              else ...[
-                SliverToBoxAdapter(child: _buildSegmentedControl()),
-                SliverToBoxAdapter(child: _buildCalendarStrip()),
-              ],
-              if (isError && !isPersonal)
-                SliverToBoxAdapter(child: _buildErrorState())
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.all(AppConstants.spacingLg),
-                  sliver: _view == 'week' ? _buildWeekView() : _buildDayView(),
+          Column(
+            children: [
+              _buildFilterBar(),
+              _buildFilterIndicator(),
+              _buildSegmentedControl(),
+              _buildCalendarStrip(),
+              Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onHorizontalDragEnd: isToday
+                      ? (d) {
+                          if (d.primaryVelocity == null) return;
+                          if (d.primaryVelocity! > 200) {
+                            _goToPreviousDay();
+                          } else if (d.primaryVelocity! < -200) {
+                            _goToNextDay();
+                          }
+                        }
+                      : null,
+                  child: (isError && !isPersonal)
+                      ? SingleChildScrollView(child: _buildErrorState())
+                      : _view == 'week'
+                          ? _buildWeekList()
+                          : _buildDayList(),
                 ),
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
+              ),
             ],
-            ),
           ),
           if (_weekController.loadState == ScheduleLoadState.loading)
-            Container(
-              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.7),
-              child: const Center(
-                child: CircularProgressIndicator(),
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Container(
+                  color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.7),
+                  child: const Center(child: CircularProgressIndicator()),
+                ),
               ),
             ),
           if (isPersonal)
@@ -700,7 +682,7 @@ Widget _buildSegmentButton({
     );
   }
 
-  Widget _buildWeekView() {
+  Widget _buildWeekList() {
     final theme = Theme.of(context);
     final children = <Widget>[];
     final week = _weekController.currentWeek;
@@ -781,8 +763,14 @@ Widget _buildSegmentButton({
         );
       }
     }
-    return SliverList(
-      delegate: SliverChildListDelegate(children),
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.spacingLg,
+        AppConstants.spacingLg,
+        AppConstants.spacingLg,
+        80,
+      ),
+      children: children,
     );
   }
 
@@ -817,7 +805,7 @@ Widget _buildSegmentButton({
     );
   }
 
-  Widget _buildDayView() {
+  Widget _buildDayList() {
     final dayOfWeek = _weekController.selectedDayIndex + 1;
     final date = _weekController.currentWeek.dates[_weekController.selectedDayIndex];
     final isPersonal = _filterController.isPersonal;
@@ -859,16 +847,14 @@ Widget _buildSegmentButton({
     }
 
     if (merged.isEmpty) {
-      return SliverToBoxAdapter(
+      return Center(
         child: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Center(
-            child: Text(
-              isPersonal ? 'Задач нет' : 'Занятий нет',
-              style: TextStyle(
-                fontSize: 14,
-                color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
-              ),
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            isPersonal ? 'Задач нет' : 'Занятий нет',
+            style: TextStyle(
+              fontSize: 14,
+              color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
             ),
           ),
         ),
@@ -877,11 +863,15 @@ Widget _buildSegmentButton({
 
     merged.sort((a, b) => a.time.compareTo(b.time));
 
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) => merged[index].widget,
-        childCount: merged.length,
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.spacingLg,
+        AppConstants.spacingLg,
+        AppConstants.spacingLg,
+        80,
       ),
+      itemCount: merged.length,
+      itemBuilder: (context, index) => merged[index].widget,
     );
   }
 
@@ -948,34 +938,6 @@ Widget _buildSegmentButton({
     context.push('/schedule/add-task', extra: {'forDate': forDate});
   }
 }
-
-class _StickyControlsDelegate extends SliverPersistentHeaderDelegate {
-  final Widget child;
-  final double extent;
-
-  const _StickyControlsDelegate({required this.child, required this.extent});
-
-  @override
-  double get minExtent => extent;
-
-  @override
-  double get maxExtent => extent;
-
-  @override
-  Widget build(
-      BuildContext context, double shrinkOffset, bool overlapsContent) {
-    return Material(
-      elevation: overlapsContent ? 2 : 0,
-      color: Theme.of(context).scaffoldBackgroundColor,
-      child: child,
-    );
-  }
-
-  @override
-  bool shouldRebuild(_StickyControlsDelegate old) =>
-      old.extent != extent || old.child != child;
-}
-
 
 List<Color> _lessonTypeColor(LessonType type) {
   switch (type) {
