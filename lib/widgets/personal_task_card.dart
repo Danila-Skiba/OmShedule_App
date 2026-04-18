@@ -24,6 +24,10 @@ class PersonalTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark
+        ? const Color(0xFF2D1B69)
+        : AppColors.hintTask;
 
     return InkWell(
       onTap: onTap,
@@ -34,7 +38,7 @@ class PersonalTaskCard extends StatelessWidget {
           Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.hintTask,
+          color: cardBg,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(color: AppColors.taskAccent, width: 1.2),
           boxShadow: [

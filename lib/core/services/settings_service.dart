@@ -6,6 +6,11 @@ abstract class PrefsKeys {
   static const profileRole = 'profile_role';
   static const defaultGroupId = 'default_group_id';
   static const defaultTeacherId = 'default_teacher_id';
+  // Filter state persistence
+  static const savedFilterType = 'saved_filter_type';
+  static const savedGroupName = 'saved_group_name';
+  static const savedTeacherName = 'saved_teacher_name';
+  static const savedAudienceName = 'saved_audience_name';
 }
 
 class SettingsService {
@@ -62,6 +67,46 @@ class SettingsService {
       _store.remove(PrefsKeys.defaultTeacherId);
     } else {
       _store[PrefsKeys.defaultTeacherId] = id;
+    }
+  }
+
+  static String? getSavedFilterType() =>
+      _store[PrefsKeys.savedFilterType] as String?;
+  static void setSavedFilterType(String? v) {
+    if (v == null) {
+      _store.remove(PrefsKeys.savedFilterType);
+    } else {
+      _store[PrefsKeys.savedFilterType] = v;
+    }
+  }
+
+  static String? getSavedGroupName() =>
+      _store[PrefsKeys.savedGroupName] as String?;
+  static void setSavedGroupName(String? v) {
+    if (v == null) {
+      _store.remove(PrefsKeys.savedGroupName);
+    } else {
+      _store[PrefsKeys.savedGroupName] = v;
+    }
+  }
+
+  static String? getSavedTeacherName() =>
+      _store[PrefsKeys.savedTeacherName] as String?;
+  static void setSavedTeacherName(String? v) {
+    if (v == null) {
+      _store.remove(PrefsKeys.savedTeacherName);
+    } else {
+      _store[PrefsKeys.savedTeacherName] = v;
+    }
+  }
+
+  static String? getSavedAudienceName() =>
+      _store[PrefsKeys.savedAudienceName] as String?;
+  static void setSavedAudienceName(String? v) {
+    if (v == null) {
+      _store.remove(PrefsKeys.savedAudienceName);
+    } else {
+      _store[PrefsKeys.savedAudienceName] = v;
     }
   }
 }

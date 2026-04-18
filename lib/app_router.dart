@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omstu_schedule/data/schedule_data.dart';
 import 'layouts/mobile_layout.dart';
+import 'screens/add_task_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/calendar_picker_screen.dart';
 import 'screens/schedule_screen.dart';
@@ -90,6 +91,16 @@ final GoRouter appRouter = GoRouter(
                     items: ScheduleData.getauditorium.keys.toList(),
                     selectedId: selected,
                   ),
+                );
+              },
+            ),
+            GoRoute(
+              path: 'add-task',
+              pageBuilder: (context, state) {
+                final extra = state.extra as Map<String, dynamic>?;
+                final forDate = extra?['forDate'] as DateTime? ?? DateTime.now();
+                return MaterialPage<void>(
+                  child: AddTaskScreen(forDate: forDate),
                 );
               },
             ),

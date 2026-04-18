@@ -12,7 +12,6 @@ import '../core/utils/week_service.dart';
 import '../models/lesson.dart';
 import '../models/personal_task.dart';
 import '../models/schedule_type.dart';
-import '../widgets/add_task_dialog.dart';
 import '../widgets/personal_task_card.dart';
 
 
@@ -26,7 +25,6 @@ class ScheduleScreen extends StatefulWidget {
 class _ScheduleScreenState extends State<ScheduleScreen> {
   String _view = 'today';
   late ScheduleType _scheduleType;
-  Lesson? _selectedLesson;
   late ScheduleWeekController _weekController;
   late FilterController _filterController;
   List<PersonalTask> _tasks = [];
@@ -43,7 +41,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   void initState() {
     super.initState();
     _filterController = FilterController();
-    _applyDefaultsFromProfile();
+    _restoreOrApplyDefaults();
     _filterController.addListener(_onFilterChanged);
     _weekController = ScheduleWeekController();
     _weekController.addListener(_onWeekControllerChanged);
@@ -62,7 +60,25 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     super.dispose();
   }
 
-  void _onFilterChanged() => setState(() {});
+  void _onFilterChanged() {
+    _saveFilterState();
+    setState(() {});
+  }
+
+  void _saveFilterState() {
+    final ft = _filterController.currentFilterType.value;
+    String typeStr;
+    switch (ft) {
+      case FilterType.group: typeStr = 'group'; break;
+      case FilterType.teacher: typeStr = 'teacher'; break;
+      case FilterType.audience: typeStr = 'audience'; break;
+      case FilterType.personal: typeStr = 'personal'; break;
+    }
+    SettingsService.setSavedFilterType(typeStr);
+    SettingsService.setSavedGroupName(_filterController.selectedGroup.value);
+    SettingsService.setSavedTeacherName(_filterController.selectedTeacher.value);
+    SettingsService.setSavedAudienceName(_filterController.selectedAudience.value);
+  }
 
   void _onTasksChanged() {
     if (_filterController.isPersonal && mounted) _loadTasks();
@@ -110,13 +126,36 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
+  void _restoreOrApplyDefaults() {
+    final savedType = SettingsService.getSavedFilterType();
+    if (savedType != null) {
+      // Restore previously selected filter
+      _filterController.updateGroup(SettingsService.getSavedGroupName());
+      _filterController.updateTeacher(SettingsService.getSavedTeacherName());
+      _filterController.updateAudience(SettingsService.getSavedAudienceName());
+      FilterType ft;
+      switch (savedType) {
+        case 'teacher': ft = FilterType.teacher; break;
+        case 'audience': ft = FilterType.audience; break;
+        case 'personal': ft = FilterType.personal; break;
+        default: ft = FilterType.group;
+      }
+      _scheduleType = ft == FilterType.teacher
+          ? ScheduleType.teacher
+          : ft == FilterType.audience
+              ? ScheduleType.audience
+              : ScheduleType.group;
+      _filterController.setFilterType(ft);
+    } else {
+      _applyDefaultsFromProfile();
+    }
+  }
+
   void _applyDefaultsFromProfile() {
     final role = SettingsService.getProfileRole();
     if (role == 'student') {
       _scheduleType = ScheduleType.group;
-      _filterController.updateGroup(
-      ScheduleData.getgroups.keys.first,
-      );
+      _filterController.updateGroup(ScheduleData.getgroups.keys.first);
       _filterController.updateTeacher(null);
       _filterController.updateAudience(null);
     } else {
@@ -184,18 +223,35 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final isPersonal = _filterController.isPersonal;
+    final isError = _weekController.loadState == ScheduleLoadState.error;
+    final stickyHeight = _view == 'today' ? 195.0 : 130.0;
+
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: _buildHeader(),
-      body:  Stack(
+      body: Stack(
         children: [
           CustomScrollView(
             slivers: [
+              // Scrolls away on scroll-down
               SliverToBoxAdapter(child: _buildFilterBar()),
               SliverToBoxAdapter(child: _buildFilterIndicator()),
-              SliverToBoxAdapter(child: _buildSegmentedControl()),
-              SliverToBoxAdapter(child: _buildCalendarStrip()),
-              if (_weekController.loadState == ScheduleLoadState.error)
+              // Pinned: segmented control + calendar strip
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StickyControlsDelegate(
+                  extent: stickyHeight,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildSegmentedControl(),
+                      _buildCalendarStrip(),
+                    ],
+                  ),
+                ),
+              ),
+              if (isError && !isPersonal)
                 SliverToBoxAdapter(child: _buildErrorState())
               else
                 SliverPadding(
@@ -212,7 +268,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 child: CircularProgressIndicator(),
               ),
             ),
-          if (_filterController.isPersonal)
+          if (isPersonal)
             Positioned(
               right: 16,
               bottom: 160,
@@ -224,7 +280,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   AppBar _buildHeader() {
-    final theme = Theme.of(context);
     return AppBar(
       title: const Text('Расписание'),
       actions: [
@@ -239,7 +294,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   Widget _buildFilterBar() {
   final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
   final items = [
     (FilterType.group, 'Группа', Icons.groups),
     (FilterType.teacher, 'Преподаватель', Icons.person),
@@ -377,8 +431,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
 Widget _buildSegmentedControl() {
   final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
-  
+
   return
     BaseContainer(
       shadow: false,
@@ -855,59 +908,37 @@ Widget _buildSegmentButton({
     final forDate = _view == 'week'
         ? _weekController.currentWeek.startDate
         : _weekController.currentWeek.dates[_weekController.selectedDayIndex];
-    showDialog(
-      context: context,
-      builder: (_) => AddTaskDialog(
-        forDate: forDate,
-        onSaved: _loadTasks,
-      ),
-    );
+    context.push('/schedule/add-task', extra: {'forDate': forDate});
   }
 }
 
-class _SimpleChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+class _StickyControlsDelegate extends SliverPersistentHeaderDelegate {
+  final Widget child;
+  final double extent;
 
-  const _SimpleChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
+  const _StickyControlsDelegate({required this.child, required this.extent});
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  double get minExtent => extent;
+
+  @override
+  double get maxExtent => extent;
+
+  @override
+  Widget build(
+      BuildContext context, double shrinkOffset, bool overlapsContent) {
     return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.25)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-            ),
-          ),
-        ),
-      ),
+      elevation: overlapsContent ? 2 : 0,
+      color: Theme.of(context).scaffoldBackgroundColor,
+      child: child,
     );
   }
+
+  @override
+  bool shouldRebuild(_StickyControlsDelegate old) =>
+      old.extent != extent || old.child != child;
 }
+
 
 List<Color> _lessonTypeColor(LessonType type) {
   switch (type) {
