@@ -470,26 +470,26 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 Widget _buildSegmentedControl() {
   final theme = Theme.of(context);
 
-  return
-    BaseContainer(
-      shadow: false,
-      
-      margin:const EdgeInsets.symmetric(horizontal: AppConstants.spacingLg).copyWith(bottom: 10),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      backgroundColor: Colors.white.withValues(alpha: 0.1),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            children: [
-              // Анимированный индикатор
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                margin: EdgeInsets.only(
-                  left: _view == 'today' ? 4 : constraints.maxWidth / 2,
-                ),
-                width: (constraints.maxWidth - 8) / 2,
-                height: 35,
+  return BaseContainer(
+    shadow: false,
+    margin: const EdgeInsets.symmetric(horizontal: AppConstants.spacingLg)
+        .copyWith(bottom: 10),
+    padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 4),
+    backgroundColor: Colors.white.withValues(alpha: 0.1),
+    child: SizedBox(
+      height: 35,
+      child: Stack(
+        children: [
+          AnimatedAlign(
+            alignment: _view == 'today'
+                ? Alignment.centerLeft
+                : Alignment.centerRight,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+            child: FractionallySizedBox(
+              widthFactor: 0.5,
+              heightFactor: 1,
+              child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(12),
@@ -502,27 +502,26 @@ Widget _buildSegmentedControl() {
                   ],
                 ),
               ),
-              
-              // Кнопки
-              Row(
-                children: [
-                  _buildSegmentButton(
-                    label: 'Сегодня',
-                    value: 'today',
-                    isSelected: _view == 'today',
-                  ),
-                  _buildSegmentButton(
-                    label: 'Неделя',
-                    value: 'week',
-                    isSelected: _view == 'week',
-                  ),
-                ],
+            ),
+          ),
+          Row(
+            children: [
+              _buildSegmentButton(
+                label: 'Сегодня',
+                value: 'today',
+                isSelected: _view == 'today',
+              ),
+              _buildSegmentButton(
+                label: 'Неделя',
+                value: 'week',
+                isSelected: _view == 'week',
               ),
             ],
-          );
-        },
+          ),
+        ],
       ),
-    );
+    ),
+  );
 }
 
 Widget _buildSegmentButton({
