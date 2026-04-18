@@ -227,10 +227,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
             style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 16),
-          ..._taskList.map((task) => _TaskTile(
-            task: task,
-            onTap: () => _toggleTask(task.id),
-          )),
+          if (_taskList.isEmpty)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 24),
+              child: Center(
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.check_circle_outline_rounded,
+                      size: 40,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.25),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Нет задач',
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ..._taskList.map((task) => _TaskTile(
+              task: task,
+              onTap: () => _toggleTask(task.id),
+            )),
         ],
       ),
     );
@@ -322,12 +345,13 @@ class _TaskTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isUrgent = task.deadline == 'сегодня' || task.deadline == 'завтра';
+    final isDark = theme.brightness == Brightness.dark;
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Material(
         color: task.completed
-            ? AppColors.success.withValues(alpha: 0.1)
-            : theme.scaffoldBackgroundColor,
+            ? (isDark ? AppColors.hintsuccessDark : AppColors.success.withValues(alpha: 0.1))
+            : theme.cardColor,
         borderRadius: BorderRadius.circular(12),
         child: InkWell(
           onTap: onTap,

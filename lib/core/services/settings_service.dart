@@ -1,20 +1,21 @@
 import 'package:flutter/material.dart';
 
-/// Ключи настроек (хранение в памяти)
 abstract class PrefsKeys {
   static const themeMode = 'theme_mode';
   static const accentColorValue = 'accent_color_value';
   static const profileRole = 'profile_role';
   static const defaultGroupId = 'default_group_id';
   static const defaultTeacherId = 'default_teacher_id';
+  static const scheduleFilterType = 'schedule_filter_type';
+  static const scheduleFilterGroupId = 'schedule_filter_group_id';
+  static const scheduleFilterTeacherId = 'schedule_filter_teacher_id';
+  static const scheduleFilterRoomId = 'schedule_filter_room_id';
 }
 
-/// Сервис настроек в памяти (без CocoaPods/SharedPreferences)
 class SettingsService {
   static final Map<String, Object> _store = {};
 
   static void init() {
-    // Значения по умолчанию при первом запуске
     _store.putIfAbsent(PrefsKeys.themeMode, () => 'light');
     _store.putIfAbsent(PrefsKeys.profileRole, () => 'student');
   }
@@ -64,6 +65,43 @@ class SettingsService {
       _store.remove(PrefsKeys.defaultTeacherId);
     } else {
       _store[PrefsKeys.defaultTeacherId] = id;
+    }
+  }
+
+  // --- Filter persistence ---
+  static String? getScheduleFilterType() => _store[PrefsKeys.scheduleFilterType] as String?;
+  static void setScheduleFilterType(String? type) {
+    if (type == null) {
+      _store.remove(PrefsKeys.scheduleFilterType);
+    } else {
+      _store[PrefsKeys.scheduleFilterType] = type;
+    }
+  }
+
+  static String? getScheduleFilterGroupId() => _store[PrefsKeys.scheduleFilterGroupId] as String?;
+  static void setScheduleFilterGroupId(String? id) {
+    if (id == null) {
+      _store.remove(PrefsKeys.scheduleFilterGroupId);
+    } else {
+      _store[PrefsKeys.scheduleFilterGroupId] = id;
+    }
+  }
+
+  static String? getScheduleFilterTeacherId() => _store[PrefsKeys.scheduleFilterTeacherId] as String?;
+  static void setScheduleFilterTeacherId(String? id) {
+    if (id == null) {
+      _store.remove(PrefsKeys.scheduleFilterTeacherId);
+    } else {
+      _store[PrefsKeys.scheduleFilterTeacherId] = id;
+    }
+  }
+
+  static String? getScheduleFilterRoomId() => _store[PrefsKeys.scheduleFilterRoomId] as String?;
+  static void setScheduleFilterRoomId(String? id) {
+    if (id == null) {
+      _store.remove(PrefsKeys.scheduleFilterRoomId);
+    } else {
+      _store[PrefsKeys.scheduleFilterRoomId] = id;
     }
   }
 }

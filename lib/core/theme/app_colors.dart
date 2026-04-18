@@ -12,12 +12,17 @@ class AppColors {
   static const Color primary = Color(0xFF1E3A8A);
   static const Color primaryLight = Color(0xFF3B82F6);
 
-  //Hint
-
+  //Hint (light)
   static const Color hintprimary = Color.fromARGB(255, 226, 233, 255);
-  static const Color hintwarning = Color.fromARGB(255, 255, 244, 227); 
+  static const Color hintwarning = Color.fromARGB(255, 255, 244, 227);
   static const Color hinterror = Color.fromARGB(255, 255, 231, 229);
-  static const Color hintsuccess = Color.fromARGB(255, 228, 255, 229); 
+  static const Color hintsuccess = Color.fromARGB(255, 228, 255, 229);
+
+  //Hint (dark)
+  static const Color hintprimaryDark = Color(0xFF1A2540);
+  static const Color hintwarningDark = Color(0xFF2A2010);
+  static const Color hinterrorDark = Color(0xFF2A1515);
+  static const Color hintsuccessDark = Color(0xFF152A1A);
 
   // Text
   static const Color textPrimary = Color(0xFF1E293B);

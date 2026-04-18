@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
-import '../constants/app_colors.dart';
 import '../constants/app_constants.dart';
 
 /// Нижняя навигация
@@ -40,7 +39,9 @@ class MobileLayout extends StatelessWidget {
     bottom: false, // 👈 отключаем нижний отступ
     child: Container(
       decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 255, 255, 255).withValues(alpha: 0.5),
+        color: isDark
+            ? theme.cardColor.withValues(alpha: 0.9)
+            : const Color.fromARGB(255, 255, 255, 255).withValues(alpha: 0.85),
         borderRadius: const BorderRadius.all(Radius.circular(30)),
       ),
       padding: const EdgeInsets.symmetric(horizontal: 0),
@@ -81,7 +82,7 @@ class _NavTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final activeColor = theme.colorScheme.primary;
-    final inactiveColor =  Colors.black;
+    final inactiveColor = theme.colorScheme.onSurface.withValues(alpha: 0.55);
     
     return Material(
       color: Colors.transparent,

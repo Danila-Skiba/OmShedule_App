@@ -284,12 +284,10 @@ class DashboardScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
+            Text(
               'Расписание на сегодня',
-              style: TextStyle(
-                fontSize: 14,
+              style: theme.textTheme.titleSmall?.copyWith(
                 fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
               ),
             ),
             const SizedBox(height: 4),
@@ -339,14 +337,12 @@ Widget _buildNewsSection() {
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Padding(
-        padding: EdgeInsets.only(left: 18, bottom: 12),
-        child: Text(
-          'Новости ОмГТУ',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+      Padding(
+        padding: const EdgeInsets.only(left: 18, bottom: 12),
+        child: Builder(
+          builder: (ctx) => Text(
+            'Новости ОмГТУ',
+            style: Theme.of(ctx).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.bold),
           ),
         ),
       ),
@@ -515,10 +511,9 @@ class _ScheduleRow extends StatelessWidget {
             children: [
               Text(
                 lesson.timeStart,
-                style: const TextStyle(
-                  fontSize: 14,
+                style: Theme.of(context).textTheme.titleSmall?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
               const SizedBox(height: 4),
@@ -533,7 +528,9 @@ class _ScheduleRow extends StatelessWidget {
               const SizedBox(height: 4),
               Text(
                 lesson.timeEnd,
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ],
           ),
@@ -542,7 +539,7 @@ class _ScheduleRow extends StatelessWidget {
             flex: 1,
             child: Container(
               height: 1,
-              color: AppColors.border,
+              color: Theme.of(context).dividerColor,
             ),
           ),
           const SizedBox(width: 12),
@@ -553,15 +550,15 @@ class _ScheduleRow extends StatelessWidget {
               children: [
                 Text(
                   lesson.subject,
-                  style: const TextStyle(
-                    fontSize: 14,
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
                     fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
                   ),
                 ),
                 Text(
                   '${lesson.teacher} • ${lesson.room}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ],
             ),
@@ -604,7 +601,10 @@ class _NewsCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   news.date,
-                  style: const TextStyle(fontSize: 10, color: AppColors.textSecondary),
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontSize: 10,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
             ],
@@ -612,10 +612,9 @@ class _NewsCard extends StatelessWidget {
           const SizedBox(height: 8),
           Text(
             news.title,
-            style: const TextStyle(
+            style: Theme.of(context).textTheme.titleSmall?.copyWith(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -623,17 +622,17 @@ class _NewsCard extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             news.preview,
-            style: const TextStyle(
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontSize: 11,
-              color: AppColors.textSecondary,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
           ),
           const Spacer(),
-          const Text(
+          Text(
             'Читать дальше',
-            style: TextStyle(
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
               fontSize: 11,
               fontWeight: FontWeight.w600,
               color: AppColors.primaryLight,

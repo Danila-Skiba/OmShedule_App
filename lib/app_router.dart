@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'data/schedule_mock_data.dart';
 import 'layouts/mobile_layout.dart';
+import 'screens/add_event_screen.dart';
 import 'screens/dashboard_screen.dart';
 import 'screens/filter_screen.dart';
 import 'screens/schedule_screen.dart';
@@ -83,6 +84,12 @@ final GoRouter appRouter = GoRouter(
                   ),
                 );
               },
+            ),
+            GoRoute(
+              path: 'add-event',
+              pageBuilder: (context, state) => const MaterialPage<Map<String, dynamic>?>(
+                child: AddEventScreen(),
+              ),
             ),
           ],
         ),

@@ -26,10 +26,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String? _selectedRoomId;
   int _selectedDay = 1;
   int _weekOffset = 0;
-  Lesson? _selectedLesson;
-
-  final _newEvent = _NewEventForm();
-
   Set<String> get _selectedGroupIds =>
       _selectedGroupId != null ? {_selectedGroupId!} : {};
   Set<String> get _selectedTeacherNames =>
@@ -40,8 +36,37 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   @override
   void initState() {
     super.initState();
-    _applyDefaultsFromProfile();
+    _loadFiltersFromStorage();
     _selectedDay = DateTime.now().weekday.clamp(1, 6);
+  }
+
+  void _loadFiltersFromStorage() {
+    final savedType = SettingsService.getScheduleFilterType();
+    final savedGroup = SettingsService.getScheduleFilterGroupId();
+    final savedTeacher = SettingsService.getScheduleFilterTeacherId();
+    final savedRoom = SettingsService.getScheduleFilterRoomId();
+
+    if (savedType != null && (savedGroup != null || savedTeacher != null || savedRoom != null)) {
+      // Restore persisted filter
+      switch (savedType) {
+        case 'group':
+          _scheduleType = ScheduleType.group;
+          _selectedGroupId = savedGroup;
+          break;
+        case 'teacher':
+          _scheduleType = ScheduleType.teacher;
+          _selectedTeacherName = savedTeacher;
+          break;
+        case 'room':
+          _scheduleType = ScheduleType.audience;
+          _selectedRoomId = savedRoom;
+          break;
+        default:
+          _applyDefaultsFromProfile();
+      }
+    } else {
+      _applyDefaultsFromProfile();
+    }
   }
 
   void _applyDefaultsFromProfile() {
@@ -59,6 +84,23 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
+  void _saveFilter() {
+    switch (_scheduleType) {
+      case ScheduleType.group:
+        SettingsService.setScheduleFilterType('group');
+        SettingsService.setScheduleFilterGroupId(_selectedGroupId);
+        break;
+      case ScheduleType.teacher:
+        SettingsService.setScheduleFilterType('teacher');
+        SettingsService.setScheduleFilterTeacherId(_selectedTeacherName);
+        break;
+      case ScheduleType.audience:
+        SettingsService.setScheduleFilterType('room');
+        SettingsService.setScheduleFilterRoomId(_selectedRoomId);
+        break;
+    }
+  }
+
   List<Lesson> get _filteredLessons {
     return ScheduleMockData.lessonsFiltered(
       groupIds: _selectedGroupIds.isEmpty ? null : _selectedGroupIds,
@@ -68,34 +110,85 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   String get _filterIndicator {
-    if (_selectedGroupId != null) return '$_selectedGroupId';
-    if (_selectedTeacherName != null) return '$_selectedTeacherName';
-    if (_selectedRoomId != null) return '$_selectedRoomId';
+    if (_selectedGroupId != null) return _selectedGroupId!;
+    if (_selectedTeacherName != null) return _selectedTeacherName!;
+    if (_selectedRoomId != null) return _selectedRoomId!;
     return 'Выберите группу, преподавателя или аудиторию';
   }
 
-  int get _todayIndex {
-    final today = DateTime.now().weekday;
-    return today == 7 ? 0 : today - 1;
-  }
-
   static const _weekDays = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ'];
+
+  Future<void> _openSelect(String type) async {
+    String? result;
+    if (type == 'group') {
+      result = await context.push<String?>(
+        '/schedule/select-group',
+        extra: {'selected': _selectedGroupId},
+      );
+      if (result != null && mounted) {
+        setState(() {
+          _scheduleType = ScheduleType.group;
+          _selectedGroupId = result;
+          _selectedTeacherName = null;
+          _selectedRoomId = null;
+        });
+        _saveFilter();
+      }
+    } else if (type == 'teacher') {
+      result = await context.push<String?>(
+        '/schedule/select-teacher',
+        extra: {'selected': _selectedTeacherName},
+      );
+      if (result != null && mounted) {
+        setState(() {
+          _scheduleType = ScheduleType.teacher;
+          _selectedTeacherName = result;
+          _selectedGroupId = null;
+          _selectedRoomId = null;
+        });
+        _saveFilter();
+      }
+    } else if (type == 'room') {
+      result = await context.push<String?>(
+        '/schedule/select-room',
+        extra: {'selected': _selectedRoomId},
+      );
+      if (result != null && mounted) {
+        setState(() {
+          _scheduleType = ScheduleType.audience;
+          _selectedRoomId = result;
+          _selectedGroupId = null;
+          _selectedTeacherName = null;
+        });
+        _saveFilter();
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: _buildHeader(),
-      body:  Stack(
+      body: Stack(
         children: [
           CustomScrollView(
-            
             slivers: [
-        
               SliverToBoxAdapter(child: _buildFilterBar()),
               SliverToBoxAdapter(child: _buildFilterIndicator()),
-              SliverToBoxAdapter(child: _buildSegmentedControl()),
-              SliverToBoxAdapter(child: _buildCalendarStrip()),
+              SliverPersistentHeader(
+                pinned: true,
+                delegate: _StickyControlsDelegate(
+                  minHeight: _view == 'today' ? 204 : 140,
+                  maxHeight: _view == 'today' ? 204 : 140,
+                  child: Column(
+                    children: [
+                      _buildSegmentedControl(),
+                      _buildCalendarStrip(),
+                    ],
+                  ),
+                ),
+              ),
               SliverPadding(
                 padding: const EdgeInsets.all(AppConstants.spacingLg),
                 sliver: _view == 'week' ? _buildWeekView() : _buildDayView(),
@@ -114,10 +207,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   AppBar _buildHeader() {
-    final theme = Theme.of(context);
-    return AppBar(
-        title: const Text('Расписание'),
-      );
+    return AppBar(title: const Text('Расписание'));
   }
 
   Widget _buildFilterBar() {
@@ -130,7 +220,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           margin: const EdgeInsets.all(AppConstants.spacingLg),
           padding: const EdgeInsets.all(4),
           decoration: BoxDecoration(
-            color: (theme.cardColor).withValues(alpha: isDark ? 0.8 : 0.9),
+            color: theme.cardColor.withValues(alpha: isDark ? 0.8 : 0.9),
             borderRadius: BorderRadius.circular(AppConstants.radiusMd),
           ),
           child: Row(
@@ -138,22 +228,22 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               Expanded(
                 child: _FilterChip(
                   label: 'Группа',
-                  selected: _selectedGroupId != null,
-                  onTap: () => {} //_openSelect('group'),
+                  selected: _scheduleType == ScheduleType.group && _selectedGroupId != null,
+                  onTap: () => _openSelect('group'),
                 ),
               ),
               Expanded(
                 child: _FilterChip(
                   label: 'Преподаватель',
-                  selected: _selectedTeacherName != null,
-                  onTap: () => {} //_openSelect('teacher'),
+                  selected: _scheduleType == ScheduleType.teacher && _selectedTeacherName != null,
+                  onTap: () => _openSelect('teacher'),
                 ),
               ),
               Expanded(
                 child: _FilterChip(
                   label: 'Аудитория',
-                  selected: _selectedRoomId != null,
-                  onTap: () => {} //_openSelect('room'),
+                  selected: _scheduleType == ScheduleType.audience && _selectedRoomId != null,
+                  onTap: () => _openSelect('room'),
                 ),
               ),
             ],
@@ -165,83 +255,60 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   Widget _buildFilterIndicator() {
     final theme = Theme.of(context);
+    final type = _scheduleType == ScheduleType.group
+        ? 'group'
+        : _scheduleType == ScheduleType.teacher
+            ? 'teacher'
+            : 'room';
     return TextButton.icon(
-            onPressed: () => _openSelect('group'),
-            icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
-            label: Text(
-              _filterIndicator,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.primary,
-              ),
-            ),
-          );
-  }
-
-  Future<void> _openSelect(String type) async {
-    String? result;
-    if (type == 'group') {
-      result = await context.push<String?>(
-        '/schedule/select-group',
-        extra: {'selected': _selectedGroupId},
-      );
-      if (result != null && mounted) setState(() => _selectedGroupId = result);
-    } else if (type == 'teacher') {
-      result = await context.push<String?>(
-        '/schedule/select-teacher',
-        extra: {'selected': _selectedTeacherName},
-      );
-      if (result != null && mounted) setState(() => _selectedTeacherName = result);
-    } else if (type == 'room') {
-      result = await context.push<String?>(
-        '/schedule/select-room',
-        extra: {'selected': _selectedRoomId},
-      );
-      if (result != null && mounted) setState(() => _selectedRoomId = result);
-    }
+      onPressed: () => _openSelect(type),
+      icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
+      label: Text(
+        _filterIndicator,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: theme.colorScheme.primary,
+        ),
+      ),
+    );
   }
 
   Widget _buildSegmentedControl() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     return Container(
-      padding: const EdgeInsets.all(AppConstants.spacingLg),
+      padding: const EdgeInsets.fromLTRB(
+        AppConstants.spacingLg, AppConstants.spacingMd,
+        AppConstants.spacingLg, AppConstants.spacingMd,
+      ),
       color: theme.cardColor,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
-                  borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: _SegmentChip(
-                        label: 'Сегодня',
-                        value: 'today',
-                        active: _view,
-                        onTap: () => setState(() => _view = 'today'),
-                      ),
-                    ),
-                    Expanded(
-                      child: _SegmentChip(
-                        label: 'Неделя',
-                        value: 'week',
-                        active: _view,
-                        onTap: () => setState(() => _view = 'week'),
-                      ),
-                    ),
-                  ],
-                ),
+      child: Container(
+        padding: const EdgeInsets.all(4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: isDark ? 0.6 : 0.8),
+          borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: _SegmentChip(
+                label: 'Сегодня',
+                value: 'today',
+                active: _view,
+                onTap: () => setState(() => _view = 'today'),
               ),
-            ],
-          );
-        },
+            ),
+            Expanded(
+              child: _SegmentChip(
+                label: 'Неделя',
+                value: 'week',
+                active: _view,
+                onTap: () => setState(() => _view = 'week'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -284,7 +351,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         }
       },
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         color: Theme.of(context).cardColor,
         child: Column(
           children: [
@@ -309,7 +376,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 8),
             Row(
               children: List.generate(6, (i) {
                 final dayNum = i + 1;
@@ -399,21 +466,48 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             child: Center(
               child: Text(
                 'Занятий нет',
-                style: TextStyle(fontSize: 14, color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
+                ),
               ),
             ),
           ),
         );
       }
     }
-    return SliverList(
-      delegate: SliverChildListDelegate(children),
-    );
+    return SliverList(delegate: SliverChildListDelegate(children));
   }
 
   Widget _buildDayView() {
     final dayNum = _selectedDay;
     final dayLessons = _filteredLessons.where((l) => l.dayOfWeek == dayNum).toList();
+
+    if (dayLessons.isEmpty) {
+      return SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 48),
+          child: Center(
+            child: Column(
+              children: [
+                Icon(
+                  Icons.event_available_rounded,
+                  size: 48,
+                  color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.25),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  'Занятий нет',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.45),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
 
     return SliverList(
       delegate: SliverChildBuilderDelegate(
@@ -444,7 +538,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       elevation: 8,
       shadowColor: Colors.black26,
       child: InkWell(
-        onTap: () => _showAddEventDialog(context),
+        onTap: () => context.push('/schedule/add-event'),
         borderRadius: BorderRadius.circular(999),
         child: SizedBox(
           width: 56,
@@ -454,23 +548,31 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       ),
     );
   }
+}
 
-  void _showAddEventDialog(BuildContext context) {
-    _newEvent.reset();
-    showDialog(
-      context: context,
-      builder: (ctx) => Material(
-        type: MaterialType.transparency,
-        child: _AddEventDialog(
-          form: _newEvent,
-          onCancel: () => Navigator.of(ctx).pop(),
-          onSave: () {
-            Navigator.of(ctx).pop();
-          },
-        ),
-      ),
-    );
-  }
+class _StickyControlsDelegate extends SliverPersistentHeaderDelegate {
+  final double minHeight;
+  final double maxHeight;
+  final Widget child;
+
+  const _StickyControlsDelegate({
+    required this.minHeight,
+    required this.maxHeight,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => child;
+
+  @override
+  double get maxExtent => maxHeight;
+
+  @override
+  double get minExtent => minHeight;
+
+  @override
+  bool shouldRebuild(_StickyControlsDelegate old) =>
+      old.minHeight != minHeight || old.maxHeight != maxHeight || old.child != child;
 }
 
 class _FilterChip extends StatelessWidget {
@@ -565,16 +667,16 @@ class _SegmentChip extends StatelessWidget {
   }
 }
 
-List<Color> _lessonTypeColor(LessonType type) {
+List<Color> _lessonTypeColor(LessonType type, bool isDark) {
   switch (type) {
     case LessonType.lecture:
-      return [AppColors.primaryLight,AppColors.hintprimary];
+      return [AppColors.primaryLight, isDark ? AppColors.hintprimaryDark : AppColors.hintprimary];
     case LessonType.lab:
-      return [AppColors.warning, AppColors.hintwarning];
+      return [AppColors.warning, isDark ? AppColors.hintwarningDark : AppColors.hintwarning];
     case LessonType.exam:
-      return [AppColors.error, AppColors.hinterror];
+      return [AppColors.error, isDark ? AppColors.hinterrorDark : AppColors.hinterror];
     case LessonType.personal:
-      return [AppColors.success,AppColors.hintsuccess];
+      return [AppColors.success, isDark ? AppColors.hintsuccessDark : AppColors.hintsuccess];
   }
 }
 
@@ -587,7 +689,8 @@ class _LessonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _lessonTypeColor(lesson.type);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = _lessonTypeColor(lesson.type, isDark);
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
@@ -599,7 +702,7 @@ class _LessonCard extends StatelessWidget {
           border: Border.all(color: color[0], width: 1.2),
           boxShadow: [
             BoxShadow(
-              color: theme.brightness == Brightness.dark
+              color: isDark
                   ? Colors.black.withValues(alpha: 0.2)
                   : const Color.fromARGB(255, 233, 233, 233),
               blurRadius: 4,
@@ -800,216 +903,6 @@ class _DetailRow extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _NewEventForm {
-  String title = '';
-  String type = 'personal';
-  String time = '';
-  String room = '';
-  String notes = '';
-
-  void reset() {
-    title = '';
-    type = 'personal';
-    time = '';
-    room = '';
-    notes = '';
-  }
-}
-
-class _AddEventDialog extends StatefulWidget {
-  final _NewEventForm form;
-  final VoidCallback onCancel;
-  final VoidCallback onSave;
-
-  const _AddEventDialog({
-    required this.form,
-    required this.onCancel,
-    required this.onSave,
-  });
-
-  @override
-  State<_AddEventDialog> createState() => _AddEventDialogState();
-}
-
-class _AddEventDialogState extends State<_AddEventDialog> {
-  late TextEditingController _titleController;
-  late TextEditingController _roomController;
-  late TextEditingController _notesController;
-
-  @override
-  void initState() {
-    super.initState();
-    _titleController = TextEditingController(text: widget.form.title);
-    _roomController = TextEditingController(text: widget.form.room);
-    _notesController = TextEditingController(text: widget.form.notes);
-  }
-
-  @override
-  void dispose() {
-    _titleController.dispose();
-    _roomController.dispose();
-    _notesController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final types = [
-      (id: 'personal', label: 'Личное', color: AppColors.success),
-      (id: 'meeting', label: 'Встреча', color: AppColors.primaryLight),
-      (id: 'exam', label: 'Экзамен', color: AppColors.error),
-      (id: 'other', label: 'Другое', color: AppColors.warning),
-    ];
-    return Dialog(
-      backgroundColor: theme.dialogBackgroundColor,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.radiusLg)),
-      child: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Добавить событие',
-                style: theme.textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-              const SizedBox(height: 24),
-              Text('Название', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  hintText: 'Встреча, задача, экзамен...',
-                ),
-                onChanged: (v) => widget.form.title = v,
-              ),
-              const SizedBox(height: 16),
-              Text('Тип', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-              const SizedBox(height: 8),
-              GridView.count(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                crossAxisCount: 2,
-                mainAxisSpacing: 8,
-                crossAxisSpacing: 8,
-                childAspectRatio: 2.2,
-                children: types.map((t) => Material(
-                  color: widget.form.type == t.id ? theme.colorScheme.primary.withValues(alpha: 0.15) : theme.cardColor,
-                  borderRadius: BorderRadius.circular(12),
-                  child: InkWell(
-                    onTap: () => setState(() => widget.form.type = t.id),
-                    borderRadius: BorderRadius.circular(12),
-                    child: Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
-                        border: Border.all(
-                          color: widget.form.type == t.id ? theme.colorScheme.primary : theme.dividerColor,
-                          width: 2,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 16,
-                            height: 16,
-                            decoration: BoxDecoration(color: t.color, shape: BoxShape.circle),
-                          ),
-                          const SizedBox(width: 8),
-                          Text(t.label, style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w500)),
-                        ],
-                      ),
-                    ),
-                  ),
-                )).toList(),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Время', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          decoration: const InputDecoration(hintText: '--:--'),
-                          onChanged: (v) => widget.form.time = v,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Аудитория', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-                        const SizedBox(height: 8),
-                        TextField(
-                          controller: _roomController,
-                          decoration: const InputDecoration(hintText: '312'),
-                          onChanged: (v) => widget.form.room = v,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text('Заметки', style: theme.textTheme.titleSmall?.copyWith(color: theme.colorScheme.primary)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _notesController,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  hintText: 'Дополнительная информация...',
-                  alignLabelWithHint: true,
-                ),
-                onChanged: (v) => widget.form.notes = v,
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: widget.onCancel,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: theme.colorScheme.primary,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppConstants.radiusMd)),
-                    ),
-                      child: const Text('Отмена'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: widget.onSave,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      ),
-                      child: const Text('Добавить'),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
