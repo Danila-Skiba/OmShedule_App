@@ -221,36 +221,73 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
+  void _goToNextDay() {
+    final idx = _weekController.selectedDayIndex;
+    if (idx < 6) {
+      _weekController.selectDay(idx + 1);
+    } else {
+      _weekController.goToNextWeek();
+    }
+  }
+
+  void _goToPreviousDay() {
+    final idx = _weekController.selectedDayIndex;
+    if (idx > 0) {
+      _weekController.selectDay(idx - 1);
+    } else {
+      _weekController.goToPreviousWeek();
+      _weekController.selectDay(6);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isPersonal = _filterController.isPersonal;
     final isError = _weekController.loadState == ScheduleLoadState.error;
-    final stickyHeight = _view == 'today' ? 195.0 : 130.0;
+    final isToday = _view == 'today';
 
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
       appBar: _buildHeader(),
       body: Stack(
         children: [
-          CustomScrollView(
+          GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onHorizontalDragEnd: isToday
+                ? (d) {
+                    if (d.primaryVelocity == null) return;
+                    if (d.primaryVelocity! > 200) {
+                      _goToPreviousDay();
+                    } else if (d.primaryVelocity! < -200) {
+                      _goToNextDay();
+                    }
+                  }
+                : null,
+            child: CustomScrollView(
             slivers: [
               // Scrolls away on scroll-down
               SliverToBoxAdapter(child: _buildFilterBar()),
               SliverToBoxAdapter(child: _buildFilterIndicator()),
-              // Pinned: segmented control + calendar strip
-              SliverPersistentHeader(
-                pinned: true,
-                delegate: _StickyControlsDelegate(
-                  extent: stickyHeight,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      _buildSegmentedControl(),
-                      _buildCalendarStrip(),
-                    ],
+              // In "today" mode — pin the segmented control + day strip.
+              // In "week" mode — regular sliver (scrolls away with content).
+              if (isToday)
+                SliverPersistentHeader(
+                  pinned: true,
+                  delegate: _StickyControlsDelegate(
+                    extent: 215,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _buildSegmentedControl(),
+                        _buildCalendarStrip(),
+                      ],
+                    ),
                   ),
-                ),
-              ),
+                )
+              else ...[
+                SliverToBoxAdapter(child: _buildSegmentedControl()),
+                SliverToBoxAdapter(child: _buildCalendarStrip()),
+              ],
               if (isError && !isPersonal)
                 SliverToBoxAdapter(child: _buildErrorState())
               else
@@ -260,6 +297,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                 ),
               const SliverToBoxAdapter(child: SizedBox(height: 80)),
             ],
+            ),
           ),
           if (_weekController.loadState == ScheduleLoadState.loading)
             Container(
