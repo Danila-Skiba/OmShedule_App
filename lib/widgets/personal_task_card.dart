@@ -24,6 +24,9 @@ class PersonalTaskCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final cardBg = isDark ? AppColors.hintTaskDark : AppColors.hintTask;
+    final accentColor = isDark ? const Color(0xFFB49AFF) : AppColors.taskAccent;
 
     return InkWell(
       onTap: onTap,
@@ -34,9 +37,9 @@ class PersonalTaskCard extends StatelessWidget {
           Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: AppColors.hintTask,
+          color: cardBg,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: AppColors.taskAccent, width: 1.2),
+          border: Border.all(color: accentColor.withValues(alpha: isDark ? 0.5 : 1.0), width: 1.2),
           boxShadow: [
             BoxShadow(
               color: theme.brightness == Brightness.dark
@@ -82,14 +85,14 @@ class PersonalTaskCard extends StatelessWidget {
                           vertical: 2,
                         ),
                         decoration: BoxDecoration(
-                          color: theme.cardColor.withValues(alpha: 0.6),
+                          color: accentColor.withValues(alpha: isDark ? 0.18 : 0.12),
                           borderRadius: BorderRadius.circular(999),
                         ),
-                        child: const Text(
+                        child: Text(
                           'Личное',
                           style: TextStyle(
                             fontSize: 12,
-                            color: AppColors.taskAccent,
+                            color: accentColor,
                             fontWeight: FontWeight.w600,
                           ),
                         ),

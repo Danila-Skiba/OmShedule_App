@@ -40,9 +40,19 @@ class MobileLayout extends StatelessWidget {
     bottom: false, 
     child: Container(
       decoration: BoxDecoration(
-        color: const Color.fromARGB(255, 255, 255, 255).withValues(alpha: 0.5),
+        color: isDark
+              ? const Color(0xFF1E1E1E).withValues(alpha: 0.95)
+              : const Color(0xFFFFFFFF).withValues(alpha: 0.88),
         borderRadius: const BorderRadius.all(Radius.circular(30)),
-        boxShadow: const [ 
+        boxShadow: isDark
+            ? [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.4),
+                  blurRadius: 20,
+                  offset: const Offset(0, 4),
+                ),
+              ]
+            : const [
                 BoxShadow(
                   color: Color.fromARGB(80, 148, 163, 184),
                   blurRadius: 16,
@@ -88,8 +98,9 @@ class _NavTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final activeColor = theme.colorScheme.primary;
-    const inactiveColor =  Colors.black;
+    final inactiveColor = isDark ? const Color(0xFFA1A1AA) : Colors.black;
     
     return Material(
       color: Colors.transparent,

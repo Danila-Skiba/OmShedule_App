@@ -10,7 +10,7 @@ import 'core/theme/theme_notifier.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('ru');
-  SettingsService.init();
+  await SettingsService.init();
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,

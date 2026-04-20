@@ -25,7 +25,7 @@ class ThemeNotifier extends ChangeNotifier {
   }
 
   void setAccentColor(Color? color) {
-    if (_accentColor?.value == color?.value) return;
+    if (_accentColor?.toARGB32() == color?.toARGB32()) return;
     _accentColor = color;
     SettingsService.setAccentColor(color);
     notifyListeners();

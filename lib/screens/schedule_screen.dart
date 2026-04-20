@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:omstu_schedule/core/services/schedule_cache_service.dart';
+import 'package:omstu_schedule/core/utils/week_service.dart';
 import 'package:omstu_schedule/widgets/base_container.dart';
 import 'package:omstu_schedule/data/schedule_data.dart';
 import '../constants/app_colors.dart';
@@ -8,13 +10,17 @@ import '../core/services/settings_service.dart';
 import '../core/services/task_service.dart';
 import '../core/state/filter_controller.dart';
 import '../core/state/schedule_week_controller.dart';
-import '../core/utils/week_service.dart';
 import '../models/lesson.dart';
 import '../models/personal_task.dart';
 import '../models/schedule_type.dart';
-import '../widgets/add_task_dialog.dart';
 import '../widgets/personal_task_card.dart';
+import 'add_task_screen.dart';
 
+// ---------------------------------------------------------------------------
+// Бесконечный PageView: 7001 страниц, середина = 3500
+// ---------------------------------------------------------------------------
+const int _kMidPage = 3500;
+const int _kTotalDayPages = 7001;
 
 class ScheduleScreen extends StatefulWidget {
   const ScheduleScreen({super.key});
@@ -23,56 +29,140 @@ class ScheduleScreen extends StatefulWidget {
   State<ScheduleScreen> createState() => _ScheduleScreenState();
 }
 
+/// Хранит сессионное состояние расписания (сохраняется при переходах между вкладками).
+class _SessionState {
+  static String view = 'today';
+  static DateTime? selectedDate;
+  static int? selectedDayIndex;
+}
+
 class _ScheduleScreenState extends State<ScheduleScreen> {
-  String _view = 'today';
-  late ScheduleType _scheduleType;
-  Lesson? _selectedLesson;
-  late ScheduleWeekController _weekController;
+  String _view = _SessionState.view;
+
   late FilterController _filterController;
+  late ScheduleWeekController _weekController;
   List<PersonalTask> _tasks = [];
 
+  /// Опорный день (нормализованный до 00:00) — page kMidPage соответствует этому дню.
+  late DateTime _refDay;
+
+  late PageController _dayPageController;
+  bool _isPageAnimating = false;
+
+  // Текущие значения фильтра (дублируем для передачи в cache/week queries)
+  String? _filterGroupIds;
+  String? _filterTeacherNames;
+  String? _filterRoomIds;
+
+  // Показ/скрытие панели фильтров по кнопке
+  bool _filterBarVisible = true;
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
+
   ScheduleType get currentScheduleType {
-  final filterType = _filterController.currentFilterType.value;
-  if (filterType == FilterType.group) return ScheduleType.group;
-  if (filterType == FilterType.teacher) return ScheduleType.teacher;
-  if (filterType == FilterType.audience) return ScheduleType.audience;
-  return ScheduleType.group;
-}
+    final ft = _filterController.currentFilterType.value;
+    if (ft == FilterType.group) return ScheduleType.group;
+    if (ft == FilterType.teacher) return ScheduleType.teacher;
+    if (ft == FilterType.audience) return ScheduleType.audience;
+    return ScheduleType.group;
+  }
+
+  DateTime _dateForPage(int page) {
+    final offset = page - _kMidPage;
+    return _refDay.add(Duration(days: offset));
+  }
+
+  int _pageForDate(DateTime date) {
+    final d = DateTime(date.year, date.month, date.day);
+    return _kMidPage + d.difference(_refDay).inDays;
+  }
+
+  int get _currentDayPage => _pageForDate(_weekController.selectedDate);
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
 
   @override
   void initState() {
     super.initState();
+
+    final now = DateTime.now();
+    _refDay = DateTime(now.year, now.month, now.day);
+
     _filterController = FilterController();
     _applyDefaultsFromProfile();
     _filterController.addListener(_onFilterChanged);
-    _weekController = ScheduleWeekController();
+
+    // Восстанавливаем сессионную дату, если есть
+    final restoreDate = _SessionState.selectedDate;
+
+    // Создаём контроллер с уже известными фильтрами — одна загрузка.
+    _weekController = ScheduleWeekController(
+      initialDate: restoreDate,
+      initialGroupIds: _filterGroupIds,
+      initialTeacherNames: _filterTeacherNames,
+      initialRoomIds: _filterRoomIds,
+    );
+
+    // Восстанавливаем выбранный день
+    if (_SessionState.selectedDayIndex != null) {
+      _weekController.selectDay(_SessionState.selectedDayIndex!);
+    }
+
     _weekController.addListener(_onWeekControllerChanged);
     TaskService.instance.addListener(_onTasksChanged);
-    _syncFiltersToController();
     _loadTasks();
+
+    final initialPage = restoreDate != null
+        ? _pageForDate(restoreDate)
+        : _kMidPage;
+    _dayPageController = PageController(initialPage: initialPage);
   }
 
   @override
   void dispose() {
+    // Сохраняем сессионное состояние
+    _SessionState.view = _view;
+    _SessionState.selectedDate = _weekController.selectedDate;
+    _SessionState.selectedDayIndex = _weekController.selectedDayIndex;
+
     TaskService.instance.removeListener(_onTasksChanged);
     _filterController.removeListener(_onFilterChanged);
     _filterController.dispose();
     _weekController.removeListener(_onWeekControllerChanged);
     _weekController.dispose();
+    _dayPageController.dispose();
     super.dispose();
   }
+
+  // ---------------------------------------------------------------------------
+  // Event handlers
+  // ---------------------------------------------------------------------------
 
   void _onFilterChanged() => setState(() {});
 
   void _onTasksChanged() {
     if (_filterController.isPersonal && mounted) _loadTasks();
   }
+
   void _onWeekControllerChanged() {
+    if (!mounted) return;
     setState(() {});
     _loadTasks();
+    // Синхронизируем PageController с выбранным днём (только если не свайп)
+    if (_dayPageController.hasClients && !_isPageAnimating) {
+      final target = _currentDayPage;
+      if ((_dayPageController.page?.round() ?? -1) != target) {
+        _dayPageController.jumpToPage(target);
+      }
+    }
   }
 
   Future<void> _loadTasks() async {
+    if (!mounted) return;
     final week = _weekController.currentWeek;
     final tasks = await TaskService.instance.getTasksForPeriod(
       week.startDate,
@@ -81,28 +171,98 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (mounted) setState(() => _tasks = tasks);
   }
 
-  /// Передаёт в репозиторий только выбранный фильтр — без суммирования.
+  // ---------------------------------------------------------------------------
+  // Фильтры
+  // ---------------------------------------------------------------------------
+
+  void _applyDefaultsFromProfile() {
+    // Восстанавливаем все сохранённые значения фильтров
+    final savedType = SettingsService.getLastFilterType();
+    final savedGroup = SettingsService.getLastGroupId();
+    final savedTeacher = SettingsService.getLastTeacherId();
+    final savedAudience = SettingsService.getLastAudienceId();
+
+    final role = SettingsService.getProfileRole();
+
+    // Всегда восстанавливаем ВСЕ фильтры из памяти
+    final group = savedGroup ??
+        (role == 'student'
+            ? ScheduleData.getgroups.keys.first
+            : SettingsService.getDefaultGroupId());
+    _filterController.updateGroup(group);
+
+    final teacher = savedTeacher ??
+        SettingsService.getDefaultTeacherId() ??
+        ScheduleData.getpersons.keys.first;
+    _filterController.updateTeacher(teacher);
+
+    if (savedAudience != null) {
+      _filterController.updateAudience(savedAudience);
+    }
+
+    // Определяем активный тип фильтра
+    FilterType ft;
+    switch (savedType) {
+      case 'teacher':
+        ft = FilterType.teacher;
+        break;
+      case 'audience':
+        ft = FilterType.audience;
+        break;
+      case 'personal':
+        ft = FilterType.personal;
+        break;
+      default:
+        ft = FilterType.group;
+    }
+
+    // Если вообще ничего не сохранено — дефолт по роли
+    if (savedGroup == null && savedTeacher == null && savedAudience == null) {
+      ft = role == 'student' ? FilterType.group : FilterType.teacher;
+    }
+
+    _filterController.setFilterType(ft);
+
+    // Устанавливаем активные фильтры для загрузки расписания
+    switch (ft) {
+      case FilterType.group:
+        _filterGroupIds = _filterController.selectedGroup.value;
+        break;
+      case FilterType.teacher:
+        _filterTeacherNames = _filterController.selectedTeacher.value;
+        break;
+      case FilterType.audience:
+        _filterRoomIds = _filterController.selectedAudience.value;
+        break;
+      case FilterType.personal:
+        break;
+    }
+  }
+
   void _syncFiltersToController() {
     final ft = _filterController.currentFilterType.value;
     String? groupIds;
     String? teacherNames;
     String? roomIds;
+
     switch (ft) {
       case FilterType.group:
-        final v = _filterController.selectedGroup.value;
-        groupIds = v;
+        groupIds = _filterController.selectedGroup.value;
         break;
       case FilterType.teacher:
-        final v = _filterController.selectedTeacher.value;
-        teacherNames = v;
+        teacherNames = _filterController.selectedTeacher.value;
         break;
       case FilterType.audience:
-        final v = _filterController.selectedAudience.value;
-        roomIds = v;
+        roomIds = _filterController.selectedAudience.value;
         break;
       case FilterType.personal:
         break;
     }
+
+    _filterGroupIds = groupIds;
+    _filterTeacherNames = teacherNames;
+    _filterRoomIds = roomIds;
+
     _weekController.setFilters(
       groupIds: groupIds,
       teacherNames: teacherNames,
@@ -110,32 +270,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  void _applyDefaultsFromProfile() {
-    final role = SettingsService.getProfileRole();
-    if (role == 'student') {
-      _scheduleType = ScheduleType.group;
-      _filterController.updateGroup(
-      ScheduleData.getgroups.keys.first,
-      );
-      _filterController.updateTeacher(null);
-      _filterController.updateAudience(null);
-    } else {
-      _scheduleType = ScheduleType.teacher;
-      _filterController.updateTeacher(
-        SettingsService.getDefaultTeacherId() ??
-            ScheduleData.getpersons.keys.first,
-      );
-      _filterController.updateGroup(null);
-      _filterController.updateAudience(null);
+  void _saveCurrentFilter() {
+    final ft = _filterController.currentFilterType.value;
+    // Сохраняем активный тип
+    switch (ft) {
+      case FilterType.group:
+        SettingsService.setLastFilterType('group');
+        break;
+      case FilterType.teacher:
+        SettingsService.setLastFilterType('teacher');
+        break;
+      case FilterType.audience:
+        SettingsService.setLastFilterType('audience');
+        break;
+      case FilterType.personal:
+        SettingsService.setLastFilterType('personal');
+        break;
     }
-    _filterController.setFilterType(
-      _scheduleType == ScheduleType.group
-          ? FilterType.group
-          : FilterType.teacher,
-    );
+    // Всегда сохраняем ВСЕ значения фильтров
+    SettingsService.setLastGroupId(_filterController.selectedGroup.value);
+    SettingsService.setLastTeacherId(_filterController.selectedTeacher.value);
+    SettingsService.setLastAudienceId(_filterController.selectedAudience.value);
   }
-
-  List<Lesson> get _filteredLessons => _weekController.lessons;
 
   String get _filterIndicator {
     final v = _filterController.selectedValue;
@@ -153,18 +309,769 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  static String _dateStr(DateTime d) {
-    final y = d.year.toString().padLeft(4, '0');
-    final m = d.month.toString().padLeft(2, '0');
-    final day = d.day.toString().padLeft(2, '0');
-    return '$y-$m-$day';
-  }
+  // ---------------------------------------------------------------------------
+  // Данные по дням
+  // ---------------------------------------------------------------------------
+
+  static String _dateStr(DateTime d) =>
+      '${d.year.toString().padLeft(4, '0')}-'
+      '${d.month.toString().padLeft(2, '0')}-'
+      '${d.day.toString().padLeft(2, '0')}';
 
   List<PersonalTask> _tasksForDate(DateTime date) {
     final s = _dateStr(date);
     return _tasks.where((t) => t.date == s).toList()
       ..sort((a, b) => a.time.compareTo(b.time));
   }
+
+  // ---------------------------------------------------------------------------
+  // Build
+  // ---------------------------------------------------------------------------
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      appBar: _buildHeader(),
+      body: Stack(
+        children: [
+          _view == 'today' ? _buildDaySwipeView() : _buildWeekSwipeView(),
+          if (_weekController.loadState == ScheduleLoadState.loading)
+            Container(
+              color: Theme.of(context)
+                  .scaffoldBackgroundColor
+                  .withValues(alpha: 0.65),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          if (_filterController.isPersonal)
+            Positioned(
+              right: 16,
+              bottom: 160,
+              child: _buildFAB(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // AppBar
+  // ---------------------------------------------------------------------------
+
+  AppBar _buildHeader() {
+    return AppBar(
+      title: const Text('Расписание'),
+      actions: [
+        IconButton(
+          icon: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 200),
+            child: Icon(
+              _filterBarVisible
+                  ? Icons.filter_list_off_rounded
+                  : Icons.filter_list_rounded,
+              key: ValueKey(_filterBarVisible),
+            ),
+          ),
+          onPressed: () => setState(() => _filterBarVisible = !_filterBarVisible),
+          tooltip: _filterBarVisible ? 'Скрыть фильтры' : 'Показать фильтры',
+        ),
+        IconButton(
+          icon: const Icon(Icons.calendar_month_rounded),
+          onPressed: _openCalendar,
+          tooltip: 'Выбор даты',
+        ),
+      ],
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Day view — бесконечный PageView (свайп меняет день, в т.ч. через неделю)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildDaySwipeView() {
+    return Column(
+      children: [
+        _buildCollapsibleFilterHeader(),
+        _buildSegmentedControl(),
+        _buildCalendarStrip(),
+        if (_weekController.loadState == ScheduleLoadState.error)
+          Expanded(child: _buildErrorState())
+        else
+          Expanded(
+            child: PageView.builder(
+              controller: _dayPageController,
+              physics: const BouncingScrollPhysics(),
+              itemCount: _kTotalDayPages,
+              onPageChanged: _onDayPageChanged,
+              itemBuilder: (context, page) {
+                final date = _dateForPage(page);
+                return _buildSingleDayPage(date);
+              },
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// Анимированная обёртка для filter bar + indicator (toggle по кнопке)
+  Widget _buildCollapsibleFilterHeader() {
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 280),
+      curve: Curves.easeInOut,
+      height: _filterBarVisible
+          ? (_filterController.isPersonal ? 66 : 106)
+          : 0,
+      clipBehavior: Clip.hardEdge,
+      decoration: const BoxDecoration(),
+      child: SingleChildScrollView(
+        physics: const NeverScrollableScrollPhysics(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildFilterBar(),
+            _buildFilterIndicator(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _onDayPageChanged(int page) {
+    _isPageAnimating = true;
+    final date = _dateForPage(page);
+
+    // Если дата вышла за пределы текущей недели — переходим на нужную неделю
+    if (!_weekController.currentWeek.contains(date)) {
+      _weekController.goToWeekContaining(date);
+    } else {
+      final dayIdx = _weekController.currentWeek.dayIndexFor(date);
+      if (dayIdx != null) _weekController.selectDay(dayIdx);
+    }
+
+    Future.delayed(const Duration(milliseconds: 350), () {
+      if (mounted) _isPageAnimating = false;
+    });
+  }
+
+  Widget _buildSingleDayPage(DateTime date) {
+    final dayOfWeek = date.weekday; // 1=Mon..7=Sun (совпадает с API)
+    final isPersonal = _filterController.isPersonal;
+
+    List<Lesson> dayLessons;
+    if (isPersonal) {
+      dayLessons = [];
+    } else if (_weekController.currentWeek.contains(date)) {
+      // Текущая неделя уже загружена
+      dayLessons = _weekController.lessons
+          .where((l) => l.dayOfWeek == dayOfWeek)
+          .toList();
+    } else {
+      // Соседняя неделя — пробуем взять из кеша
+      final week = WeekService.getWeekForDate(date);
+      final cached = ScheduleCacheService.instance.getCachedLessons(
+        week,
+        groupIds: _filterGroupIds,
+        teacherNames: _filterTeacherNames,
+        roomIds: _filterRoomIds,
+      );
+      dayLessons = cached?.where((l) => l.dayOfWeek == dayOfWeek).toList() ?? [];
+    }
+
+    final dayTasks = _tasksForDate(date);
+
+    final merged = <({String time, Widget widget})>[];
+    for (final l in dayLessons) {
+      merged.add((
+        time: l.timeStart,
+        widget: Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _LessonCard(
+            lesson: l,
+            onTap: () => _showLessonDetails(l),
+            type: currentScheduleType,
+          ),
+        ),
+      ));
+    }
+    if (isPersonal) {
+      for (final t in dayTasks) {
+        merged.add((
+          time: t.time,
+          widget: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: PersonalTaskCard(
+              task: t,
+              onTap: () => _editTask(t),
+              onDelete: () => _confirmDeleteTask(context, t),
+            ),
+          ),
+        ));
+      }
+    }
+    merged.sort((a, b) => a.time.compareTo(b.time));
+
+    if (merged.isEmpty) {
+      return Center(
+        child: Text(
+          isPersonal ? 'Задач нет' : 'Занятий нет',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface
+                    .withValues(alpha: 0.5),
+              ),
+        ),
+      );
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+      itemCount: merged.length,
+      itemBuilder: (_, i) => merged[i].widget,
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Week view — недельный список со свайпом влево/вправо для смены недели
+  // ---------------------------------------------------------------------------
+
+  Widget _buildWeekSwipeView() {
+    return GestureDetector(
+      onHorizontalDragEnd: (details) {
+        final v = details.primaryVelocity ?? 0;
+        if (v < -400) _weekController.goToNextWeek();
+        if (v > 400) _weekController.goToPreviousWeek();
+      },
+      behavior: HitTestBehavior.translucent,
+      child: CustomScrollView(
+        slivers: [
+          SliverToBoxAdapter(child: _buildCollapsibleFilterHeader()),
+          SliverToBoxAdapter(child: _buildSegmentedControl()),
+          SliverToBoxAdapter(child: _buildCalendarStrip()),
+          if (_weekController.loadState == ScheduleLoadState.error)
+            SliverToBoxAdapter(child: _buildErrorState())
+          else
+            SliverPadding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+              sliver: _buildWeekSliver(),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Filter bar
+  // ---------------------------------------------------------------------------
+
+  Widget _buildFilterBar() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final items = [
+      (FilterType.group, 'Группа', Icons.groups_rounded),
+      (FilterType.teacher, 'Преподаватель', Icons.person_rounded),
+      (FilterType.audience, 'Аудитория', Icons.meeting_room_rounded),
+      (FilterType.personal, 'Личное', Icons.person_pin_rounded),
+    ];
+
+    return ValueListenableBuilder<FilterType>(
+      valueListenable: _filterController.currentFilterType,
+      builder: (context, selectedType, _) {
+        return SizedBox(
+          height: 66,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            itemCount: items.length,
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            separatorBuilder: (_, __) => const SizedBox(width: 8),
+            itemBuilder: (context, i) {
+              final item = items[i];
+              final isSelected = selectedType == item.$1;
+
+              // Цвета для светлой / тёмной темы
+              final selectedBg = isDark
+                  ? Colors.white.withValues(alpha: 0.14)
+                  : Colors.white;
+              final unselectedBg = isDark
+                  ? Colors.white.withValues(alpha: 0.05)
+                  : Colors.white.withValues(alpha: 0.5);
+
+              final textColor = isDark
+                  ? (isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.5))
+                  : (isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.55));
+
+              final iconColor = isDark
+                  ? (isSelected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.45))
+                  : (isSelected
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurface.withValues(alpha: 0.5));
+
+              return GestureDetector(
+                onTap: () {
+                  _filterController.setFilterType(item.$1);
+                  if (item.$1 != FilterType.personal) {
+                    _syncFiltersToController();
+                  }
+                  _saveCurrentFilter();
+                },
+                child: BaseContainer(
+                  shadow: isSelected && !isDark,
+                  backgroundColor: isSelected ? selectedBg : unselectedBg,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 14, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(item.$3, size: 17, color: iconColor),
+                      const SizedBox(width: 6),
+                      Text(
+                        item.$2,
+                        style: theme.textTheme.labelLarge?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: textColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Filter indicator
+  // ---------------------------------------------------------------------------
+
+  Widget _buildFilterIndicator() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final color = isDark ? Colors.white.withValues(alpha: 0.85) : theme.colorScheme.primary;
+
+    if (_filterController.isPersonal) return const SizedBox(height: 4);
+
+    return TextButton.icon(
+      style: TextButton.styleFrom(
+        minimumSize: const Size(48, 40),
+        tapTargetSize: MaterialTapTargetSize.padded,
+      ),
+      onPressed: _openSelectForCurrentFilter,
+      icon: Icon(Icons.arrow_forward_ios_rounded, size: 13, color: color),
+      label: Text(
+        _filterIndicator,
+        style: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Segmented control (Сегодня / Неделя)
+  // ---------------------------------------------------------------------------
+
+  Widget _buildSegmentedControl() {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+
+    final activeBg = isDark
+        ? Colors.white.withValues(alpha: 0.14)
+        : Colors.white;
+    final containerBg = isDark
+        ? Colors.white.withValues(alpha: 0.05)
+        : Colors.white.withValues(alpha: 0.12);
+
+    return BaseContainer(
+      shadow: false,
+      margin:
+          const EdgeInsets.symmetric(horizontal: 16).copyWith(bottom: 8),
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      backgroundColor: containerBg,
+      child: LayoutBuilder(builder: (context, constraints) {
+        return Stack(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 220),
+              curve: Curves.easeOut,
+              margin: EdgeInsets.only(
+                left: _view == 'today' ? 4 : constraints.maxWidth / 2,
+              ),
+              width: (constraints.maxWidth - 8) / 2,
+              height: 34,
+              decoration: BoxDecoration(
+                color: activeBg,
+                borderRadius: BorderRadius.circular(11),
+                boxShadow: isDark
+                    ? null
+                    : [
+                        BoxShadow(
+                          color: theme.colorScheme.primary
+                              .withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+              ),
+            ),
+            Row(
+              children: [
+                _segmentBtn('Сегодня', 'today', _view == 'today', isDark, theme),
+                _segmentBtn('Неделя', 'week', _view == 'week', isDark, theme),
+              ],
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Widget _segmentBtn(String label, String value, bool isSelected,
+      bool isDark, ThemeData theme) {
+    final textColor = isDark
+        ? (isSelected ? Colors.white : Colors.white.withValues(alpha: 0.45))
+        : (isSelected
+            ? theme.colorScheme.primary
+            : theme.colorScheme.onSurface.withValues(alpha: 0.5));
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => setState(() {
+          _view = value;
+          _SessionState.view = value;
+          // При возврате в дневной вид — синхронизируем PageController
+          if (value == 'today') {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (_dayPageController.hasClients) {
+                _dayPageController.jumpToPage(_currentDayPage);
+              }
+            });
+          }
+        }),
+        child: SizedBox(
+          height: 34,
+          child: Center(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
+                color: textColor,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Calendar strip
+  // ---------------------------------------------------------------------------
+
+  Widget _buildCalendarStrip() {
+    final week = _weekController.currentWeek;
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final isLoading =
+        _weekController.loadState == ScheduleLoadState.loading;
+    final iconColor = isDark
+        ? Colors.white.withValues(alpha: isLoading ? 0.25 : 0.7)
+        : theme.colorScheme.onSurface.withValues(alpha: isLoading ? 0.25 : 0.7);
+
+    if (_view == 'week') {
+      return Container(
+        color: theme.cardColor,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _navIconBtn(Icons.chevron_left_rounded, iconColor,
+                isLoading ? null : () => _weekController.goToPreviousWeek()),
+            Text(week.formattedPeriod,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700)),
+            _navIconBtn(Icons.chevron_right_rounded, iconColor,
+                isLoading ? null : () => _weekController.goToNextWeek()),
+          ],
+        ),
+      );
+    }
+
+    // Дневной режим — полоска с 7 ячейками
+    return Container(
+      color: theme.cardColor,
+      padding: const EdgeInsets.only(left: 8, right: 8, top: 10, bottom: 14),
+      child: Column(
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _navIconBtn(Icons.chevron_left_rounded, iconColor,
+                  isLoading ? null : () => _weekController.goToPreviousWeek()),
+              Text(week.formattedPeriod,
+                  style: theme.textTheme.titleSmall
+                      ?.copyWith(fontWeight: FontWeight.w700)),
+              _navIconBtn(Icons.chevron_right_rounded, iconColor,
+                  isLoading ? null : () => _weekController.goToNextWeek()),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: List.generate(7, (i) {
+              final label = WeekService.weekDayLabels[i];
+              final date = week.dates[i];
+              final isSelected = _weekController.selectedDayIndex == i;
+              final today = DateTime.now();
+              final isToday = date.year == today.year &&
+                  date.month == today.month &&
+                  date.day == today.day;
+
+              return Expanded(
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {
+                    _weekController.selectDay(i);
+                    if (_dayPageController.hasClients) {
+                      _dayPageController.animateToPage(
+                        _pageForDate(date),
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeInOut,
+                      );
+                    }
+                  },
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 2),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 180),
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? AppColors.primaryLight
+                            : isToday
+                                ? AppColors.primaryLight.withValues(alpha: isDark ? 0.25 : 0.18)
+                                : theme.colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Column(
+                        children: [
+                          Text(
+                            label,
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: isSelected
+                                  ? Colors.white
+                                  : isToday
+                                      ? AppColors.primaryLight
+                                      : theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.55),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${date.day}',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
+                              color: isSelected
+                                  ? Colors.white
+                                  : isToday
+                                      ? AppColors.primaryLight
+                                      : theme.colorScheme.onSurface
+                                          .withValues(alpha: 0.7),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _navIconBtn(
+      IconData icon, Color color, VoidCallback? onPressed) {
+    return SizedBox(
+      width: 40,
+      height: 40,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(20),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onPressed,
+          child: Center(child: Icon(icon, color: color, size: 26)),
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Week sliver
+  // ---------------------------------------------------------------------------
+
+  Widget _buildWeekSliver() {
+    final theme = Theme.of(context);
+    final items = <Widget>[];
+    final week = _weekController.currentWeek;
+    final isPersonal = _filterController.isPersonal;
+
+    for (var di = 0; di < 7; di++) {
+      final dayOfWeek = di + 1;
+      final date = week.dates[di];
+      final label = WeekService.weekDayLabels[di];
+      final dayLessons = isPersonal
+          ? <Lesson>[]
+          : _weekController.lessons
+              .where((l) => l.dayOfWeek == dayOfWeek)
+              .toList();
+      final dayTasks = _tasksForDate(date);
+
+      final today = DateTime.now();
+      final isToday = date.year == today.year &&
+          date.month == today.month &&
+          date.day == today.day;
+
+      items.add(Padding(
+        padding: const EdgeInsets.only(top: 14, bottom: 6),
+        child: Row(
+          children: [
+            Text(
+              '$label, ${date.day}',
+              style: theme.textTheme.bodySmall?.copyWith(
+                fontWeight: FontWeight.w700,
+                color: isToday
+                    ? theme.colorScheme.primary
+                    : theme.colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+            if (isToday) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Text(
+                  'Сегодня',
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: theme.colorScheme.primary,
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ));
+
+      final merged = <({String time, Widget widget})>[];
+      for (final l in dayLessons) {
+        merged.add((
+          time: l.timeStart,
+          widget: Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _LessonCard(
+              lesson: l,
+              onTap: () => _showLessonDetails(l),
+              type: currentScheduleType,
+            ),
+          ),
+        ));
+      }
+      if (isPersonal) {
+        for (final t in dayTasks) {
+          merged.add((
+            time: t.time,
+            widget: Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: PersonalTaskCard(
+                task: t,
+                onDelete: () => _confirmDeleteTask(context, t),
+              ),
+            ),
+          ));
+        }
+      }
+      merged.sort((a, b) => a.time.compareTo(b.time));
+      for (final m in merged) {
+        items.add(m.widget);
+      }
+      if (merged.isEmpty) {
+        items.add(Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(
+            isPersonal ? 'Задач нет' : 'Занятий нет',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.38),
+            ),
+          ),
+        ));
+      }
+    }
+
+    return SliverList(delegate: SliverChildListDelegate(items));
+  }
+
+  // ---------------------------------------------------------------------------
+  // Error state
+  // ---------------------------------------------------------------------------
+
+  Widget _buildErrorState() {
+    final theme = Theme.of(context);
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.wifi_off_rounded, size: 52, color: theme.colorScheme.onSurface.withValues(alpha: 0.3)),
+            const SizedBox(height: 16),
+            Text(
+              'Не удалось загрузить расписание',
+              textAlign: TextAlign.center,
+              style: theme.textTheme.bodyMedium?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
+              ),
+            ),
+            const SizedBox(height: 20),
+            FilledButton.icon(
+              onPressed: () => _weekController.retryLoad(),
+              icon: const Icon(Icons.refresh_rounded, size: 20),
+              label: const Text('Повторить'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Navigation helpers
+  // ---------------------------------------------------------------------------
 
   void _openSelectForCurrentFilter() {
     switch (_filterController.currentFilterType.value) {
@@ -182,157 +1089,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar: _buildHeader(),
-      body:  Stack(
-        children: [
-          CustomScrollView(
-            slivers: [
-              SliverToBoxAdapter(child: _buildFilterBar()),
-              SliverToBoxAdapter(child: _buildFilterIndicator()),
-              SliverToBoxAdapter(child: _buildSegmentedControl()),
-              SliverToBoxAdapter(child: _buildCalendarStrip()),
-              if (_weekController.loadState == ScheduleLoadState.error)
-                SliverToBoxAdapter(child: _buildErrorState())
-              else
-                SliverPadding(
-                  padding: const EdgeInsets.all(AppConstants.spacingLg),
-                  sliver: _view == 'week' ? _buildWeekView() : _buildDayView(),
-                ),
-              const SliverToBoxAdapter(child: SizedBox(height: 80)),
-            ],
-          ),
-          if (_weekController.loadState == ScheduleLoadState.loading)
-            Container(
-              color: Theme.of(context).scaffoldBackgroundColor.withValues(alpha: 0.7),
-              child: const Center(
-                child: CircularProgressIndicator(),
-              ),
-            ),
-          if (_filterController.isPersonal)
-            Positioned(
-              right: 16,
-              bottom: 160,
-              child: _buildFAB(),
-            ),
-        ],
-      ),
-    );
-  }
-
-  AppBar _buildHeader() {
-    final theme = Theme.of(context);
-    return AppBar(
-      title: const Text('Расписание'),
-      actions: [
-        IconButton(
-          icon: const Icon(Icons.calendar_month_rounded),
-          onPressed: _openCalendar,
-          tooltip: 'Выбор даты',
-        ),
-      ],
-    );
-  }
-
-  Widget _buildFilterBar() {
-  final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
-  final items = [
-    (FilterType.group, 'Группа', Icons.groups),
-    (FilterType.teacher, 'Преподаватель', Icons.person),
-    (FilterType.audience, 'Аудитория', Icons.meeting_room),
-    (FilterType.personal, 'Личное', Icons.person_outline),
-  ];
-  
-  return ValueListenableBuilder<FilterType>(
-    valueListenable: _filterController.currentFilterType,
-    builder: (context, selectedType, child) {
-      return SizedBox(
-        height: 70,
-        child: ListView.separated(
-            scrollDirection: Axis.horizontal,
-            itemCount: items.length,
-            physics: const BouncingScrollPhysics(),
-            padding: const EdgeInsets.all(AppConstants.spacingLg),
-            separatorBuilder: (context, index) => const SizedBox(width: 8),
-            itemBuilder: (context, index) {
-              final item = items[index];
-              final isSelected = selectedType == item.$1;
-              
-              return GestureDetector(
-                onTap: () {
-                  _filterController.setFilterType(item.$1);
-                  if (item.$1 != FilterType.personal) {
-                    _syncFiltersToController();
-                  }
-                },
-                child: BaseContainer(
-                  shadow: isSelected ? true : false,
-
-                  
-                  backgroundColor: isSelected ? Colors.white : Colors.white.withValues(alpha: 0.4),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-
-                  ),
-                 
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        item.$3,
-                        size: 18,
-                        color: isSelected
-                            ? theme.colorScheme.primary
-                            : theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                      ),
-                      const SizedBox(width: 6),
-                      Text(
-                        item.$2,
-                        style: theme.textTheme.labelLarge?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: isSelected
-                              ? theme.colorScheme.primary
-                              : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            },
-          ),
-      );
-    }
-  );
-  }
-
-
-  Widget _buildFilterIndicator() {
-    final theme = Theme.of(context);
-    if (!_filterController.isPersonal) {
-      return TextButton.icon(
-      onPressed: _openSelectForCurrentFilter,
-      icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
-      label: Text(
-        _filterIndicator,
-        style: TextStyle(
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-          color: theme.colorScheme.primary,
-        ),
-      ),
-    );
-    }
-
-    return const SizedBox();
-    
-  }
-
   Future<void> _openSelect(String type) async {
     String? result;
     if (type == 'group') {
@@ -343,6 +1099,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (result != null && mounted) {
         _filterController.updateGroup(result);
         _syncFiltersToController();
+        _saveCurrentFilter();
       }
     } else if (type == 'teacher') {
       result = await context.push<String?>(
@@ -352,6 +1109,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (result != null && mounted) {
         _filterController.updateTeacher(result);
         _syncFiltersToController();
+        _saveCurrentFilter();
       }
     } else if (type == 'room') {
       result = await context.push<String?>(
@@ -361,6 +1119,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       if (result != null && mounted) {
         _filterController.updateAudience(result);
         _syncFiltersToController();
+        _saveCurrentFilter();
       }
     }
   }
@@ -372,430 +1131,78 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
     if (selected != null && mounted) {
       _weekController.goToWeekContaining(selected);
+      if (_view == 'today' && _dayPageController.hasClients) {
+        _dayPageController.jumpToPage(_pageForDate(selected));
+      }
     }
   }
 
-Widget _buildSegmentedControl() {
-  final theme = Theme.of(context);
-  final isDark = theme.brightness == Brightness.dark;
-  
-  return
-    BaseContainer(
-      shadow: false,
-      
-      margin:const EdgeInsets.symmetric(horizontal: AppConstants.spacingLg).copyWith(bottom: 10),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      backgroundColor: Colors.white.withValues(alpha: 0.1),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          return Stack(
-            children: [
-              // Анимированный индикатор
-              AnimatedContainer(
-                duration: const Duration(milliseconds: 300),
-                curve: Curves.easeOut,
-                margin: EdgeInsets.only(
-                  left: _view == 'today' ? 4 : constraints.maxWidth / 2,
-                ),
-                width: (constraints.maxWidth - 8) / 2,
-                height: 35,
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-              ),
-              
-              // Кнопки
-              Row(
-                children: [
-                  _buildSegmentButton(
-                    label: 'Сегодня',
-                    value: 'today',
-                    isSelected: _view == 'today',
-                  ),
-                  _buildSegmentButton(
-                    label: 'Неделя',
-                    value: 'week',
-                    isSelected: _view == 'week',
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
+  void _showLessonDetails(Lesson l) {
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (_) => _LessonDetailsSheet(lesson: l),
     );
-}
+  }
 
-Widget _buildSegmentButton({
-  required String label,
-  required String value,
-  required bool isSelected,
-}) {
-  return Expanded(
-    child: GestureDetector(
-      onTap: () => setState(() => _view = value),
-      child: Container(
-        height: 35,
-        alignment: Alignment.center,
-        child: Text(
-          label,
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            fontSize: 14,
-            fontWeight: FontWeight.w600,
-            color: isSelected
-                ? Theme.of(context).colorScheme.primary
-                : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-          ),
-        ),
-      ),
-    ),
-  );
-}
+  // ---------------------------------------------------------------------------
+  // FAB + task dialog
+  // ---------------------------------------------------------------------------
 
-  Widget _buildCalendarStrip() {
-    final week = _weekController.currentWeek;
+  Widget _buildFAB() {
     final theme = Theme.of(context);
-    final isLoading = _weekController.loadState == ScheduleLoadState.loading;
-
-    if (_view == 'week') {
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        color: theme.cardColor,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            IconButton(
-              icon: Icon(
-                Icons.chevron_left_rounded,
-                color: isLoading ? AppColors.textSecondary.withValues(alpha: 0.5) : AppColors.textSecondary,
-              ),
-              onPressed: isLoading ? null : () => _weekController.goToPreviousWeek(),
-            ),
-            Text(
-              week.formattedPeriod,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: theme.textTheme.titleSmall?.color ?? AppColors.textPrimary,
-              ),
-            ),
-            IconButton(
-              icon: Icon(
-                Icons.chevron_right_rounded,
-                color: isLoading ? AppColors.textSecondary.withValues(alpha: 0.5) : AppColors.textSecondary,
-              ),
-              onPressed: isLoading ? null : () => _weekController.goToNextWeek(),
-            ),
-          ],
-        ),
-      );
-    }
-
-    // Режим "Сегодня": полоска с 7 днями и датами
-    return GestureDetector(
-      onHorizontalDragEnd: (d) {
-        if (d.primaryVelocity == null) return;
-        if (d.primaryVelocity! > 0) {
-          _weekController.goToPreviousWeek();
-        } else {
-          _weekController.goToNextWeek();
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-        color: theme.cardColor,
-        child: Column(
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                IconButton(
-                  icon: Icon(
-                    Icons.chevron_left_rounded,
-                    color: isLoading ? AppColors.textSecondary.withValues(alpha: 0.5) : AppColors.textSecondary,
-                  ),
-                  onPressed: isLoading ? null : () => _weekController.goToPreviousWeek(),
-                ),
-                Text(
-                  week.formattedPeriod,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: theme.textTheme.titleSmall?.color ?? AppColors.textPrimary,
-                  ),
-                ),
-                IconButton(
-                  icon: Icon(
-                    Icons.chevron_right_rounded,
-                    color: isLoading ? AppColors.textSecondary.withValues(alpha: 0.5) : AppColors.textSecondary,
-                  ),
-                  onPressed: isLoading ? null : () => _weekController.goToNextWeek(),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: List.generate(7, (i) {
-                final dayLabel = WeekService.weekDayLabels[i];
-                final date = week.dates[i];
-                final dayNum = date.day;
-                final isSelected = _weekController.selectedDayIndex == i;
-                final today = DateTime.now();
-                final isToday = date.year == today.year &&
-                    date.month == today.month &&
-                    date.day == today.day;
-                return Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 2),
-                    child: Material(
-                      color: isSelected
-                          ? AppColors.primaryLight
-                          : isToday
-                              ? AppColors.primaryLight.withValues(alpha: 0.2)
-                              : theme.colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
-                      child: InkWell(
-                        onTap: () => _weekController.selectDay(i),
-                        borderRadius: BorderRadius.circular(8),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Column(
-                            children: [
-                              Text(
-                                dayLabel,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : isToday
-                                          ? AppColors.primary
-                                          : AppColors.textSecondary,
-                                ),
-                              ),
-                              Text(
-                                '$dayNum',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: isSelected ? FontWeight.bold : FontWeight.w600,
-                                  color: isSelected
-                                      ? Colors.white
-                                      : isToday
-                                          ? AppColors.primary
-                                          : AppColors.textSecondary,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            ),
-          ],
+    return Material(
+      color: theme.colorScheme.primary,
+      borderRadius: BorderRadius.circular(999),
+      elevation: 6,
+      shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
+      child: InkWell(
+        onTap: _showAddTaskDialog,
+        borderRadius: BorderRadius.circular(999),
+        child: SizedBox(
+          width: 56,
+          height: 56,
+          child: Icon(Icons.add_rounded,
+              color: theme.colorScheme.onPrimary, size: 28),
         ),
       ),
     );
   }
 
-  Widget _buildWeekView() {
-    final theme = Theme.of(context);
-    final children = <Widget>[];
-    final week = _weekController.currentWeek;
-    final isPersonal = _filterController.isPersonal;
-
-    for (var dayIndex = 0; dayIndex < 7; dayIndex++) {
-      final dayOfWeek = dayIndex + 1;
-      final date = week.dates[dayIndex];
-      final dayLabel = WeekService.weekDayLabels[dayIndex];
-      final dayLessons = isPersonal
-          ? <Lesson>[]
-          : _filteredLessons.where((l) => l.dayOfWeek == dayOfWeek).toList();
-      final dayTasks = _tasksForDate(date);
-
-      children.add(
-        Padding(
-          padding: const EdgeInsets.only(top: 16, bottom: 8),
-          child: Text(
-            '$dayLabel, ${date.day}',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary,
-            ),
-          ),
-        ),
-      );
-
-      final merged = <({String time, Widget widget})>[];
-      for (final l in dayLessons) {
-        merged.add((time: l.timeStart, widget: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: _LessonCard(
-            lesson: l,
-            onTap: () {
-              showModalBottomSheet(
-                context: context,
-                useRootNavigator: true,
-                isScrollControlled: true,
-                backgroundColor: Colors.transparent,
-                builder: (_) => _LessonDetailsSheet(lesson: l),
-              );
-            },
-            type: currentScheduleType
-          ),
-        )));
-      }
-      if (isPersonal) {
-        for (final t in dayTasks) {
-          merged.add((time: t.time, widget: Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: PersonalTaskCard(
-              task: t,
-              onDelete: () => _confirmDeleteTask(context, t),
-            ),
-          )));
-        }
-      }
-      merged.sort((a, b) => a.time.compareTo(b.time));
-
-      for (final m in merged) {
-        children.add(m.widget);
-      }
-      if (merged.isEmpty) {
-        children.add(
-          Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: Center(
-              child: Text(
-                isPersonal ? 'Задач нет' : 'Занятий нет',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: theme.textTheme.bodySmall?.color ?? AppColors.textSecondary,
-                ),
-              ),
-            ),
-          ),
-        );
-      }
-    }
-    return SliverList(
-      delegate: SliverChildListDelegate(children),
+  void _editTask(PersonalTask task) {
+    final dateParts = task.date.split('-');
+    final forDate = DateTime(
+      int.parse(dateParts[0]),
+      int.parse(dateParts[1]),
+      int.parse(dateParts[2]),
     );
-  }
-
-  Widget _buildErrorState() {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(AppConstants.spacingLg),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.error_outline_rounded,
-            size: 48,
-            color: theme.colorScheme.error,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            'Не удалось загрузить расписание',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton.icon(
-            onPressed: () => _weekController.retryLoad(),
-            icon: const Icon(Icons.refresh_rounded, size: 20),
-            label: const Text('Повторить'),
-          ),
-        ],
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddTaskScreen(
+          forDate: forDate,
+          onSaved: _loadTasks,
+          existingTask: task,
+        ),
       ),
     );
   }
 
-  Widget _buildDayView() {
-    final dayOfWeek = _weekController.selectedDayIndex + 1;
-    final date = _weekController.currentWeek.dates[_weekController.selectedDayIndex];
-    final isPersonal = _filterController.isPersonal;
-    final dayLessons = isPersonal
-        ? <Lesson>[]
-        : _filteredLessons.where((l) => l.dayOfWeek == dayOfWeek).toList();
-    final dayTasks = _tasksForDate(date);
-
-    final merged = <({String time, Widget widget})>[];
-    for (final l in dayLessons) {
-      merged.add((time: l.timeStart, widget: Padding(
-        padding: const EdgeInsets.only(bottom: 8),
-        child: _LessonCard(
-          lesson: l,
-          onTap: () {
-            showModalBottomSheet(
-              useRootNavigator: true,
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (_) => _LessonDetailsSheet(lesson: l),
-            );
-          },
-          type:currentScheduleType
-        ),
-      )));
-    }
-
-    if (isPersonal) {
-      for (final t in dayTasks) {
-        merged.add((time: t.time, widget: Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: PersonalTaskCard(
-            task: t,
-            onDelete: () => _confirmDeleteTask(context, t),
-          ),
-        )));
-      }
-    }
-
-    if (merged.isEmpty) {
-      return SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.only(bottom: 16),
-          child: Center(
-            child: Text(
-              isPersonal ? 'Задач нет' : 'Занятий нет',
-              style: TextStyle(
-                fontSize: 14,
-                color: Theme.of(context).textTheme.bodySmall?.color ?? AppColors.textSecondary,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-
-    merged.sort((a, b) => a.time.compareTo(b.time));
-
-    return SliverList(
-      delegate: SliverChildBuilderDelegate(
-        (context, index) => merged[index].widget,
-        childCount: merged.length,
+  void _showAddTaskDialog() {
+    final forDate = _view == 'week'
+        ? _weekController.currentWeek.startDate
+        : _weekController.currentWeek
+            .dates[_weekController.selectedDayIndex];
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddTaskScreen(forDate: forDate, onSaved: _loadTasks),
       ),
     );
   }
 
-  Future<void> _confirmDeleteTask(BuildContext context, PersonalTask task) async {
+  Future<void> _confirmDeleteTask(
+      BuildContext context, PersonalTask task) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -808,7 +1215,9 @@ Widget _buildSegmentButton({
           ),
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text('Удалить', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+            child: Text('Удалить',
+                style:
+                    TextStyle(color: Theme.of(ctx).colorScheme.error)),
           ),
         ],
       ),
@@ -818,116 +1227,57 @@ Widget _buildSegmentButton({
         await TaskService.instance.deleteTask(task.id);
         await _loadTasks();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Задача удалена')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('Задача удалена')));
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка удаления: $e')),
-          );
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('Ошибка: $e')));
         }
       }
     }
   }
-
-  Widget _buildFAB() {
-    final theme = Theme.of(context);
-    return Material(
-      color: theme.colorScheme.primary,
-      borderRadius: BorderRadius.circular(999),
-      elevation: 8,
-      shadowColor: Colors.black26,
-      child: InkWell(
-        onTap: _showAddTaskDialog,
-        borderRadius: BorderRadius.circular(999),
-        child: SizedBox(
-          width: 56,
-          height: 56,
-          child: Icon(Icons.add_rounded, color: theme.colorScheme.onPrimary, size: 28),
-        ),
-      ),
-    );
-  }
-
-  void _showAddTaskDialog() {
-    final forDate = _view == 'week'
-        ? _weekController.currentWeek.startDate
-        : _weekController.currentWeek.dates[_weekController.selectedDayIndex];
-    showDialog(
-      context: context,
-      builder: (_) => AddTaskDialog(
-        forDate: forDate,
-        onSaved: _loadTasks,
-      ),
-    );
-  }
 }
 
-class _SimpleChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
+// =============================================================================
+// Карточка занятия
+// =============================================================================
 
-  const _SimpleChip({
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? theme.colorScheme.primary.withValues(alpha: 0.25)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected
-                    ? theme.colorScheme.primary
-                    : theme.colorScheme.onSurface.withValues(alpha: 0.7),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-List<Color> _lessonTypeColor(LessonType type) {
-  switch (type) {
-    case LessonType.lecture:
-      return [AppColors.primaryLight,AppColors.hintprimary];
-    case LessonType.lab:
-      return [AppColors.warning, AppColors.hintwarning];
-    case LessonType.retake:
-      return [AppColors.error, AppColors.hinterror];
-    case LessonType.practice:
-      return [const Color.fromARGB(255, 26, 223, 157),AppColors.hintsuccess];
-    case LessonType.personal:
-      return [AppColors.primaryLight,AppColors.hintprimary];
+List<Color> _lessonTypeColors(LessonType type, bool isDark) {
+  if (isDark) {
+    switch (type) {
+      case LessonType.lecture:
+        return [AppColors.primaryLight, AppColors.hintprimaryDark];
+      case LessonType.lab:
+        return [AppColors.warning, AppColors.hintwarningDark];
+      case LessonType.retake:
+        return [AppColors.error, AppColors.hinterrorDark];
+      case LessonType.practice:
+        return [const Color(0xFF1ADFA0), AppColors.hintsuccessDark];
+      case LessonType.personal:
+        return [AppColors.primaryLight, AppColors.hintprimaryDark];
+    }
+  } else {
+    switch (type) {
+      case LessonType.lecture:
+        return [AppColors.primaryLight, AppColors.hintprimary];
+      case LessonType.lab:
+        return [AppColors.warning, AppColors.hintwarning];
+      case LessonType.retake:
+        return [AppColors.error, AppColors.hinterror];
+      case LessonType.practice:
+        return [const Color(0xFF1ADF9D), AppColors.hintsuccess];
+      case LessonType.personal:
+        return [AppColors.primaryLight, AppColors.hintprimary];
+    }
   }
 }
 
 class _LessonCard extends StatelessWidget {
   final Lesson lesson;
   final VoidCallback onTap;
-  final ScheduleType type; // group, teacher, audience
+  final ScheduleType type;
 
   const _LessonCard({
     required this.lesson,
@@ -938,157 +1288,188 @@ class _LessonCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = _lessonTypeColor(lesson.type);
-    final hasSubgroup = lesson.subgroup != null && lesson.subgroup!.isNotEmpty;
+    final isDark = theme.brightness == Brightness.dark;
+    final colors = _lessonTypeColors(lesson.type, isDark);
+    final accentColor = colors[0];
+    final bgColor = colors[1];
+    final hasSubgroup =
+        lesson.subgroup != null && lesson.subgroup!.isNotEmpty;
 
-    return InkWell(
-      onTap: onTap,
+    return Material(
+      color: Colors.transparent,
       borderRadius: BorderRadius.circular(16),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: color[1],
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color[0], width: 1.2),
-          boxShadow: [
-            BoxShadow(
-              color: theme.brightness == Brightness.dark
-                  ? Colors.black.withValues(alpha: 0.2)
-                  : const Color.fromARGB(255, 233, 233, 233),
-              blurRadius: 4,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isDark
+                  ? accentColor.withValues(alpha: 0.5)
+                  : accentColor.withValues(alpha: 0.9),
+              width: 1.2,
             ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Время + тип + подгруппа
-            Row(
-              children: [
-                Text(
-                  '${lesson.timeStart} - ${lesson.timeEnd}',
-                  style: theme.textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Время + тип + подгруппа
+              Row(
+                children: [
+                  Text(
+                    '${lesson.timeStart} – ${lesson.timeEnd}',
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.bold),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: theme.cardColor.withValues(alpha: 0.6),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    lesson.typeLabel,
-                    style: TextStyle(fontSize: 12, color: color[0]),
-                  ),
-                ),
-                if (hasSubgroup) ...[
                   const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: color[0].withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: color[0].withValues(alpha: 0.3),
-                        width: 0.5,
-                      ),
+                  _TypeChip(
+                      label: lesson.typeLabel,
+                      color: accentColor,
+                      isDark: isDark),
+                  if (hasSubgroup) ...[
+                    const SizedBox(width: 6),
+                    _TypeChip(
+                      label:
+                          'Подгр. ${lesson.subgroup![lesson.subgroup!.length - 1]}',
+                      color: accentColor,
+                      isDark: isDark,
                     ),
-                    child: Text(
-                      'Подгр. ${lesson.subgroup![lesson.subgroup!.length - 1]}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: color[0],
-                      ),
-                    ),
-                  ),
+                  ],
                 ],
-              ],
-            ),
-
-            const SizedBox(height: 4),
-
-            // Название предмета
-            Text(
-              lesson.subject ?? '',
-              style: theme.textTheme.titleSmall?.copyWith(
-                fontWeight: FontWeight.w600,
-                color: theme.colorScheme.onSurface,
               ),
-            ),
-
-            const SizedBox(height: 8),
-
-            // Преподаватель и/или Аудитория
-            Row(
-              children: [
-                // Показываем преподавателя, если это НЕ расписание преподавателя
-                if (type != ScheduleType.teacher && lesson.teacher?.isNotEmpty == true) ...[
-                  Icon(
-                    Icons.person_outline,
-                    size: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      lesson.teacher!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                ],
-
-                if (type != ScheduleType.group) ...[
-                  Icon(
-                    Icons.group_outlined,
-                    size: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      lesson.group ?? lesson.subgroup ?? lesson.stream ?? '', 
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-
-                // Показываем аудиторию, если это НЕ расписание аудитории
-                if (type != ScheduleType.audience && lesson.room?.isNotEmpty == true) ...[
-                  Icon(
-                    Icons.location_on_outlined,
-                    size: 16,
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                  ),
-                  const SizedBox(width: 6),
-                  Expanded(
-                    child: Text(
-                      lesson.room!,
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.85),
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                ],
-              ],
-            ),
-          ],
+              const SizedBox(height: 5),
+              Text(
+                lesson.subject,
+                style: theme.textTheme.titleSmall
+                    ?.copyWith(fontWeight: FontWeight.w700),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 8),
+              _LessonMeta(lesson: lesson, type: type, theme: theme),
+            ],
+          ),
         ),
       ),
     );
   }
 }
+
+class _LessonMeta extends StatelessWidget {
+  final Lesson lesson;
+  final ScheduleType type;
+  final ThemeData theme;
+
+  const _LessonMeta(
+      {required this.lesson, required this.type, required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = theme.colorScheme.onSurface.withValues(alpha: 0.6);
+    return Wrap(
+      spacing: 12,
+      runSpacing: 4,
+      children: [
+        if (type != ScheduleType.teacher &&
+            lesson.teacher?.isNotEmpty == true)
+          _MetaItem(
+              icon: Icons.person_outline_rounded,
+              text: lesson.teacher!,
+              color: color,
+              theme: theme),
+        if (type != ScheduleType.group)
+          _MetaItem(
+              icon: Icons.group_outlined,
+              text: lesson.group ??
+                  lesson.subgroup ??
+                  lesson.stream ??
+                  '',
+              color: color,
+              theme: theme),
+        if (type != ScheduleType.audience &&
+            lesson.room?.isNotEmpty == true)
+          _MetaItem(
+              icon: Icons.location_on_outlined,
+              text: lesson.room!,
+              color: color,
+              theme: theme),
+      ],
+    );
+  }
+}
+
+class _MetaItem extends StatelessWidget {
+  final IconData icon;
+  final String text;
+  final Color color;
+  final ThemeData theme;
+
+  const _MetaItem(
+      {required this.icon,
+      required this.text,
+      required this.color,
+      required this.theme});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(maxWidth: 180),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Flexible(
+            child: Text(
+              text,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
+              ),
+              overflow: TextOverflow.ellipsis,
+              maxLines: 1,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TypeChip extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool isDark;
+
+  const _TypeChip(
+      {required this.label, required this.color, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: isDark ? 0.18 : 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+            color: color.withValues(alpha: isDark ? 0.35 : 0.25), width: 0.8),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w600,
+            color: color.withValues(alpha: isDark ? 0.9 : 1.0)),
+      ),
+    );
+  }
+}
+
+// =============================================================================
+// Детали занятия (bottom sheet)
+// =============================================================================
 
 class _LessonDetailsSheet extends StatelessWidget {
   final Lesson lesson;
@@ -1099,7 +1480,7 @@ class _LessonDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       decoration: BoxDecoration(
         color: theme.cardColor,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1113,66 +1494,51 @@ class _LessonDetailsSheet extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // Handle bar
+          Center(
+            child: Container(
+              width: 36,
+              height: 4,
+              margin: const EdgeInsets.only(bottom: 20),
+              decoration: BoxDecoration(
+                color: theme.dividerColor,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
           Text(
-            lesson.subject?? '',
+            lesson.subject,
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
               color: theme.colorScheme.primary,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
           _DetailRow(
-            icon: Icons.access_time_rounded,
-            iconColor: AppColors.primaryLight,
-            label: 'Время',
-            value: '${lesson.timeStart} - ${lesson.timeEnd}',
-          ),
+              icon: Icons.access_time_rounded,
+              iconColor: AppColors.primaryLight,
+              label: 'Время',
+              value: '${lesson.timeStart} – ${lesson.timeEnd}'),
           _DetailRow(
-            icon: Icons.person_rounded,
-            iconColor: AppColors.success,
-            label: 'Преподаватель',
-            value: lesson.teacher?? '',
-            // subtitle: '★ 4.2 (127 отзывов)',
-          ),
-          _DetailRow(icon: Icons.group_rounded, iconColor: AppColors.primaryLight, label: 'Группа', value: lesson.group?? lesson.subgroup?? lesson.stream?? ''),
+              icon: Icons.person_rounded,
+              iconColor: AppColors.success,
+              label: 'Преподаватель',
+              value: lesson.teacher ?? '—'),
           _DetailRow(
-            icon: Icons.location_on_rounded,
-            iconColor: AppColors.error,
-            label: 'Аудитория',
-            value: '${lesson.room}, ${lesson.building}',
-            // subtitle: '350м • 5 мин пешком',
-          ),
-          
-          const SizedBox(height: 24),
-          const Row(
-            children: [
-              // Expanded(
-              //   child: ElevatedButton(
-              //     onPressed: () => Navigator.pop(context),
-              //     style: ElevatedButton.styleFrom(
-              //       backgroundColor: theme.colorScheme.primary,
-              //       foregroundColor: theme.colorScheme.onPrimary,
-              //       padding: const EdgeInsets.symmetric(vertical: 12),
-              //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              //     ),
-              //     child: const Text('Построить маршрут'),
-              //   ),
-              // ),
-              SizedBox(width: 12),
-              // Expanded(
-              //   child: OutlinedButton(
-              //     onPressed: () => Navigator.pop(context),
-              //     style: OutlinedButton.styleFrom(
-              //       foregroundColor: theme.colorScheme.primary,
-              //       padding: const EdgeInsets.symmetric(vertical: 12),
-              //       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              //       side: BorderSide(color: theme.dividerColor),
-              //     ),
-              //     child: const Text('Отметить посещение'),
-              //   ),
-              // ),
-            ],
-          ),
+              icon: Icons.group_rounded,
+              iconColor: AppColors.primaryLight,
+              label: 'Группа',
+              value: lesson.group ??
+                  lesson.subgroup ??
+                  lesson.stream ??
+                  '—'),
+          _DetailRow(
+              icon: Icons.location_on_rounded,
+              iconColor: AppColors.error,
+              label: 'Аудитория',
+              value: [lesson.room, lesson.building]
+                  .where((s) => s != null && s.isNotEmpty)
+                  .join(', ')),
         ],
       ),
     );
@@ -1184,55 +1550,40 @@ class _DetailRow extends StatelessWidget {
   final Color iconColor;
   final String label;
   final String value;
-  const _DetailRow({
-    required this.icon,
-    required this.iconColor,
-    required this.label,
-    required this.value,
 
-  });
+  const _DetailRow(
+      {required this.icon,
+      required this.iconColor,
+      required this.label,
+      required this.value});
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Padding(
-      padding: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.only(bottom: 14),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            width: 40,
-            height: 40,
+            width: 38,
+            height: 38,
             decoration: BoxDecoration(
-              color: iconColor.withValues(alpha: 0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, color: iconColor, size: 20),
+                color: iconColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle),
+            child: Icon(icon, color: iconColor, size: 18),
           ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  label,
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
-                Text(
-                  value,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Theme.of(context).colorScheme.onSurface,
-                  ),
-                ),
-                // if (subtitle != null)
-                //   Text(
-                //     subtitle!,
-                //     style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                //       color: Theme.of(context).colorScheme.onSurfaceVariant,
-                //     ),
-                //   ),
+                Text(label,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant)),
+                Text(value,
+                    style: theme.textTheme.titleSmall
+                        ?.copyWith(fontWeight: FontWeight.w600)),
               ],
             ),
           ),
@@ -1241,4 +1592,3 @@ class _DetailRow extends StatelessWidget {
     );
   }
 }
-

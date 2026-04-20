@@ -19,10 +19,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _language = 'ru';
 
   static const _accentOptions = [
-    (id: 'blue', name: 'Синий (ОмГТУ)', color: Color(0xFF1E3A8A)),
-    (id: 'green', name: 'Зелёный', color: Color(0xFF10B981)),
-    (id: 'purple', name: 'Фиолетовый', color: Color(0xFF8B5CF6)),
-    (id: 'red', name: 'Красный', color: Color(0xFFEF4444)),
+    (id: 'blue', name: 'Синий (ОмГТУ)', color: Color(0xFF6B9FFF)),
+    (id: 'green', name: 'Мятный', color: Color(0xFF6DD5A8)),
+    (id: 'purple', name: 'Лавандовый', color: Color(0xFFA78BFA)),
+    (id: 'rose', name: 'Розовый', color: Color(0xFFF9A8D4)),
+    (id: 'peach', name: 'Персиковый', color: Color(0xFFFBBF7E)),
+    (id: 'sky', name: 'Небесный', color: Color(0xFF7DD3FC)),
   ];
 
   static const _languages = [
@@ -65,9 +67,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final themeNotifier = context.watch<ThemeNotifier>();
     final themeMode = themeNotifier.themeMode;
     final accentColor = themeNotifier.accentColor;
-    final targetValue = accentColor?.value ?? _accentOptions.first.color.value;
+    final targetValue = accentColor?.toARGB32() ?? _accentOptions.first.color.toARGB32();
     final selectedAccent = _accentOptions.firstWhere(
-      (t) => t.color.value == targetValue,
+      (t) => t.color.toARGB32() == targetValue,
       orElse: () => _accentOptions.first,
     );
 
@@ -131,10 +133,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 GridView.count(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 2,
+                  crossAxisCount: 3,
                   mainAxisSpacing: 8,
                   crossAxisSpacing: 8,
-                  childAspectRatio: 2.5,
+                  childAspectRatio: 1.5,
                   children: _accentOptions.map((t) {
                     final selected = selectedAccent.id == t.id;
                     return Material(
@@ -146,7 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         onTap: () => themeNotifier.setAccentColor(t.color),
                         borderRadius: BorderRadius.circular(12),
                         child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
                           decoration: BoxDecoration(
                             borderRadius: BorderRadius.circular(12),
                             border: Border.all(
@@ -156,7 +158,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                               width: 2,
                             ),
                           ),
-                          child: Row(
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Container(
                                 width: 24,
@@ -164,19 +168,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 decoration: BoxDecoration(
                                   color: t.color,
                                   shape: BoxShape.circle,
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: t.color.withValues(alpha: 0.35),
+                                      blurRadius: 8,
+                                      offset: const Offset(0, 2),
+                                    ),
+                                  ],
                                 ),
+                                child: selected
+                                    ? const Icon(Icons.check, size: 12, color: Colors.white)
+                                    : null,
                               ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(
-                                  t.name,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w500,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
+                              const SizedBox(height: 4),
+                              Flexible(child: Text(
+                                t.name,
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                  color: theme.colorScheme.onSurface,
                                 ),
-                              ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              )),
                             ],
                           ),
                         ),

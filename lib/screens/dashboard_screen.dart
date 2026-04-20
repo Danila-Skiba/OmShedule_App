@@ -7,7 +7,13 @@ import '../constants/app_constants.dart';
 import '../widgets/base_container.dart';
 import '../models/lesson.dart';
 import '../models/news.dart';
+import '../models/personal_task.dart';
 import '../widgets/app_progress.dart';
+import '../core/services/settings_service.dart';
+import '../core/services/schedule_cache_service.dart';
+import '../core/services/schedule_repository.dart';
+import '../core/services/task_service.dart';
+import '../core/utils/week_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 
 
@@ -33,27 +39,23 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final _repository = NewsRepositoryImpl();
   List<News> _news = [];
   String? _error;
-  bool _isLoading = true; 
+  bool _isLoading = true;
+
+  // Сегодняшнее расписание и задачи
+  List<Lesson> _todayLessons = [];
+  List<PersonalTask> _todayTasks = [];
+  bool _scheduleLoading = true;
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadTodayData();
   }
 
   @override
   Widget build(BuildContext context) {
-    final today = DateTime.now().weekday; // 1=Mon .. 7=Sun, в mock ПН=1
-    // final todayLessons = ApiClient.instance.lessons.where((l) => l.dayOfWeek == today).toList();
-    // final completedTasks = MockData.tasks.where((t) => t.completed).length;
-    // final totalTasks = MockData.tasks.length;
-    // final nextLesson = todayLessons.isNotEmpty ? todayLessons.first : null;
-    // const minutesToNext = 14;
-
     final theme = Theme.of(context);
-
-
-
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -62,11 +64,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         slivers: [
               SliverList(
               delegate: SliverChildListDelegate([
-                // _buildQuickActions(context, nextLesson),
-                const SizedBox(height: 16),
-                // _buildStatsRow(completedTasks, totalTasks, minutesToNext),
-                const SizedBox(height: 16),
-                // _buildScheduleSection(context, todayLessons),
+                const SizedBox(height: 8),
+                _buildTodayPanel(context),
                 const SizedBox(height: 16),
                 _buildNewsSection(_news),
                 const SizedBox(height: 100)
@@ -79,15 +78,15 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Future<void> _loadData() async {
+    if (!mounted) return;
+    setState(() => _isLoading = true);
 
-    setState(() {
-      _isLoading = true;
-    });
-    
     final result = await _repository.getNews();
 
+    if (!mounted) return;
     setState(() {
-      if (result.error != null){
+      _isLoading = false;
+      if (result.error != null) {
         _error = result.error;
         _news = [];
       } else {
@@ -95,10 +94,66 @@ class _DashboardScreenState extends State<DashboardScreen> {
         _news = result.news;
       }
     });
-
   }
 
-  
+  Future<void> _loadTodayData() async {
+    if (!mounted) return;
+    setState(() => _scheduleLoading = true);
+
+    // Загружаем задачи на сегодня
+    final now = DateTime.now();
+    final tasks = await TaskService.instance.loadTasksForDate(now);
+
+    // Загружаем расписание на сегодня из кеша/API
+    List<Lesson> lessons = [];
+    try {
+      final filterType = SettingsService.getLastFilterType();
+      String? groupIds;
+      String? teacherNames;
+      String? roomIds;
+      switch (filterType) {
+        case 'group':
+          groupIds = SettingsService.getLastGroupId();
+          break;
+        case 'teacher':
+          teacherNames = SettingsService.getLastTeacherId();
+          break;
+        case 'audience':
+          roomIds = SettingsService.getLastAudienceId();
+          break;
+      }
+      if (groupIds != null || teacherNames != null || roomIds != null) {
+        final week = WeekService.getWeekForDate(now);
+        final result = await ScheduleCacheService.instance.get(
+          ApiClient(),
+          week,
+          groupIds: groupIds,
+          teacherNames: teacherNames,
+          roomIds: roomIds,
+        );
+        // Фильтруем только сегодняшние пары
+        final todayStr = '${now.year}.${now.month.toString().padLeft(2, '0')}.${now.day.toString().padLeft(2, '0')}';
+        lessons = result.lessons.where((l) {
+          if (l.date != null) {
+            // Формат даты из API может быть yyyy.MM.dd или другой
+            final normalized = l.date!.replaceAll('-', '.').replaceAll('/', '.');
+            return normalized == todayStr;
+          }
+          return l.dayOfWeek == now.weekday;
+        }).toList();
+        lessons.sort((a, b) => a.timeStart.compareTo(b.timeStart));
+      }
+    } catch (_) {
+      // Если не удалось загрузить расписание — просто показываем пустой список
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _todayTasks = tasks;
+      _todayLessons = lessons;
+      _scheduleLoading = false;
+    });
+  }
 
   AppBar _buildAppBar(BuildContext context) {
     // final theme = Theme.of(context);
@@ -384,34 +439,285 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildTodayPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final now = DateTime.now();
+    final dateStr = '${now.day} ${_monthNames[now.month - 1]}, ${_weekDayNames[now.weekday - 1]}';
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+
+    final hasLessons = _todayLessons.isNotEmpty;
+    final hasTasks = _todayTasks.isNotEmpty;
+    final hasContent = hasLessons || hasTasks;
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: BaseContainer(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Заголовок с датой
+            Row(
+              children: [
+                Container(
+                  width: 36,
+                  height: 36,
+                  decoration: BoxDecoration(
+                    color: primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Icon(
+                    Icons.today_rounded,
+                    size: 20,
+                    color: primary,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Сегодня',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: onSurface,
+                        ),
+                      ),
+                      Text(
+                        dateStr,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // Кнопка перехода к расписанию
+                Material(
+                  color: primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(10),
+                  child: InkWell(
+                    onTap: () => context.go('/schedule'),
+                    borderRadius: BorderRadius.circular(10),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            'Расписание',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: primary,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Icon(Icons.arrow_forward_ios_rounded, size: 12, color: primary),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 16),
+
+            if (_scheduleLoading)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 24),
+                  child: SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2.2,
+                      color: primary,
+                    ),
+                  ),
+                ),
+              )
+            else if (!hasContent)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: Column(
+                    children: [
+                      Icon(
+                        Icons.event_available_rounded,
+                        size: 40,
+                        color: onSurface.withValues(alpha: 0.2),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'На сегодня ничего не запланировано',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: onSurface.withValues(alpha: 0.45),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              )
+            else ...[
+              // Пары
+              if (hasLessons) ...[
+                Row(
+                  children: [
+                    Icon(Icons.school_rounded, size: 14, color: primary),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Пары (${_todayLessons.length})',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: primary,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ...List.generate(_todayLessons.length.clamp(0, 5), (i) {
+                  final lesson = _todayLessons[i];
+                  return _TodayLessonTile(lesson: lesson);
+                }),
+                if (_todayLessons.length > 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '+ ещё ${_todayLessons.length - 5}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: onSurface.withValues(alpha: 0.5),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+              ],
+
+              // Разделитель
+              if (hasLessons && hasTasks)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Divider(height: 1, color: theme.dividerColor),
+                ),
+
+              // Задачи
+              if (hasTasks) ...[
+                Row(
+                  children: [
+                    Icon(Icons.check_circle_outline_rounded, size: 14, color: AppColors.taskAccent),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Задачи (${_todayTasks.length})',
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: isDark ? const Color(0xFFB49AFF) : AppColors.taskAccent,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                ...List.generate(_todayTasks.length.clamp(0, 5), (i) {
+                  final task = _todayTasks[i];
+                  return _TodayTaskTile(task: task);
+                }),
+                if (_todayTasks.length > 5)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      '+ ещё ${_todayTasks.length - 5}',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: onSurface.withValues(alpha: 0.5),
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+              ],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
 Widget _buildNewsSection(List<News> news) {
+  final theme = Theme.of(context);
+  final isDark = theme.brightness == Brightness.dark;
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
-      const Padding(
-        padding: EdgeInsets.only(left: 18, bottom: 12),
+      Padding(
+        padding: const EdgeInsets.only(left: 18, bottom: 12),
         child: Text(
           'Новости ОмГТУ',
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.bold,
-            color: AppColors.textPrimary,
+            color: theme.colorScheme.onSurface,
           ),
         ),
       ),
       Container(
         height: 410,
         margin: const EdgeInsets.symmetric(vertical: 4),
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          itemCount: news.length,
-          itemBuilder: (context, index) => SizedBox(
-            width: 300, 
-            child: _NewsCard(news: news[index]),
-          ),
-          separatorBuilder: (context, index) => const SizedBox(width: 12),
-        ),
+        child: _isLoading
+            ? ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: 3,
+                padding: const EdgeInsets.only(left: 16),
+                itemBuilder: (context, index) => SizedBox(
+                  width: 300,
+                  child: _NewsSkeletonCard(isDark: isDark),
+                ),
+                separatorBuilder: (context, index) =>
+                    const SizedBox(width: 12),
+              )
+            : news.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.newspaper_rounded,
+                            size: 48,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.2),
+                          ),
+                          const SizedBox(height: 12),
+                          Text(
+                            'Новостей пока нет',
+                            style: theme.textTheme.bodyMedium?.copyWith(
+                              color: theme.colorScheme.onSurface
+                                  .withValues(alpha: 0.45),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: news.length,
+                    itemBuilder: (context, index) => SizedBox(
+                      width: 300,
+                      child: _NewsCard(news: news[index]),
+                    ),
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(width: 12),
+                  ),
       ),
     ],
   );
@@ -437,12 +743,6 @@ Widget _buildNewsSection(List<News> news) {
     color: AppColors.warning,
   );
   
-  @override
-  State<StatefulWidget> createState() {
-    // TODO: implement createState
-    throw UnimplementedError();
-  }
-
 }
 
 class _PopupTile extends StatelessWidget {
@@ -629,16 +929,116 @@ class _ScheduleRow extends StatelessWidget {
   }
 }
 
+/// Призрачный (skeleton) шаблон карточки новости для состояния загрузки
+class _NewsSkeletonCard extends StatefulWidget {
+  final bool isDark;
+  const _NewsSkeletonCard({required this.isDark});
+
+  @override
+  State<_NewsSkeletonCard> createState() => _NewsSkeletonCardState();
+}
+
+class _NewsSkeletonCardState extends State<_NewsSkeletonCard>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _shimmerController;
+
+  @override
+  void initState() {
+    super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _shimmerController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, child) {
+        final shimmerValue = _shimmerController.value;
+        return BaseContainer(
+          margin: const EdgeInsets.only(left: 0, bottom: 24, top: 10),
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Header skeleton
+              Row(
+                children: [
+                  _shimmerBox(32, 32, 10, shimmerValue),
+                  const SizedBox(width: 8),
+                  _shimmerBox(100, 12, 6, shimmerValue),
+                ],
+              ),
+              const SizedBox(height: 16),
+              // Title skeleton lines
+              _shimmerBox(double.infinity, 14, 6, shimmerValue),
+              const SizedBox(height: 8),
+              _shimmerBox(200, 14, 6, shimmerValue),
+              const SizedBox(height: 8),
+              _shimmerBox(140, 14, 6, shimmerValue),
+              const SizedBox(height: 16),
+              // Image skeleton
+              _shimmerBox(double.infinity, 180, 14, shimmerValue),
+              const SizedBox(height: 16),
+              // Button skeleton
+              Align(
+                alignment: Alignment.centerRight,
+                child: _shimmerBox(100, 28, 14, shimmerValue),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _shimmerBox(
+      double width, double height, double radius, double shimmerValue) {
+    final baseColor =
+        widget.isDark ? const Color(0xFF2A2A2E) : const Color(0xFFE8EBF0);
+    final highlightColor =
+        widget.isDark ? const Color(0xFF3A3A3E) : const Color(0xFFF5F7FA);
+
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        gradient: LinearGradient(
+          begin: Alignment(-1.0 + 2.0 * shimmerValue, 0),
+          end: Alignment(-1.0 + 2.0 * shimmerValue + 1.0, 0),
+          colors: [baseColor, highlightColor, baseColor],
+          stops: const [0.0, 0.5, 1.0],
+        ),
+      ),
+    );
+  }
+}
+
 class _NewsCard extends StatelessWidget {
   final News news;
 
   const _NewsCard({required this.news});
 
   static const double _imageHeight = 180;
-  static const double _titleHeight = 54; // фиксируем место под 3 строки заголовка
+  static const double _titleHeight = 54;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+    final secondaryText = onSurface.withValues(alpha: 0.6);
+
     return BaseContainer(
       margin: const EdgeInsets.only(left: 16, bottom: 24, top: 10),
       padding: const EdgeInsets.all(12),
@@ -652,10 +1052,10 @@ class _NewsCard extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  gradient: const LinearGradient(
+                  gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [AppColors.primaryLight, AppColors.primary],
+                    colors: [primary, primary.withValues(alpha: 0.7)],
                   ),
                   borderRadius: BorderRadius.circular(10),
                 ),
@@ -669,9 +1069,9 @@ class _NewsCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   news.date,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 10,
-                    color: AppColors.textSecondary,
+                    color: secondaryText,
                     fontWeight: FontWeight.w500,
                   ),
                 ),
@@ -681,17 +1081,16 @@ class _NewsCard extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Заголовок: фиксированная высота, чтобы изображение не прыгало
           SizedBox(
             height: _titleHeight,
             child: Align(
               alignment: Alignment.topLeft,
               child: Text(
                 news.title,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+                  color: onSurface,
                   height: 1.3,
                 ),
                 maxLines: 3,
@@ -701,22 +1100,17 @@ class _NewsCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 12),
-                    // Изображение: фиксированный блок + аккуратное оформление
+
           Container(
             width: double.infinity,
             height: _imageHeight,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               border: Border.all(
-                color: AppColors.primaryLight.withOpacity(0.10),
+                color: isDark
+                    ? Colors.white.withValues(alpha: 0.06)
+                    : primary.withValues(alpha: 0.10),
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.05),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(14),
@@ -728,42 +1122,40 @@ class _NewsCard extends StatelessWidget {
                     fit: BoxFit.cover,
                     alignment: Alignment.center,
                     placeholder: (context, url) => Container(
-                      color: AppColors.primaryLight.withOpacity(0.06),
-                      child: const Center(
+                      color: primary.withValues(alpha: isDark ? 0.08 : 0.06),
+                      child: Center(
                         child: SizedBox(
                           width: 24,
                           height: 24,
                           child: CircularProgressIndicator(
                             strokeWidth: 2.2,
-                            color: AppColors.primary,
+                            color: primary,
                           ),
                         ),
                       ),
                     ),
                     errorWidget: (context, url, error) => Container(
-                      color: AppColors.primaryLight.withOpacity(0.06),
+                      color: primary.withValues(alpha: isDark ? 0.08 : 0.06),
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Icon(
                             Icons.broken_image_outlined,
                             size: 40,
-                            color: AppColors.textSecondary.withOpacity(0.6),
+                            color: secondaryText.withValues(alpha: 0.5),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            'Не удалось загрузить изображение',
+                            'Не удалось загрузить',
                             style: TextStyle(
                               fontSize: 12,
-                              color: AppColors.textSecondary.withOpacity(0.8),
+                              color: secondaryText,
                             ),
                           ),
                         ],
                       ),
                     ),
                   ),
-
-                  // Лёгкий градиент для глубины
                   DecoratedBox(
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
@@ -771,7 +1163,7 @@ class _NewsCard extends StatelessWidget {
                         end: Alignment.bottomCenter,
                         colors: [
                           Colors.transparent,
-                          Colors.black.withOpacity(0.05),
+                          Colors.black.withValues(alpha: isDark ? 0.15 : 0.05),
                         ],
                       ),
                     ),
@@ -783,29 +1175,203 @@ class _NewsCard extends StatelessWidget {
 
           const SizedBox(height: 12),
 
-          // Кнопка
           Align(
             alignment: Alignment.centerRight,
             child: TextButton(
               onPressed: () => launchUrl(Uri.parse(news.url)),
               style: TextButton.styleFrom(
                 padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                // backgroundColor: AppColors.primaryLight.withOpacity(0.10),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
                 ),
               ),
-              child: const Text(
+              child: Text(
                 'Читать дальше',
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w600,
-                  color: AppColors.primaryLight,
+                  color: primary,
                 ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Плитка пары в панели «Сегодня» на главной.
+class _TodayLessonTile extends StatelessWidget {
+  final Lesson lesson;
+  const _TodayLessonTile({required this.lesson});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.04)
+              : primary.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.08)
+                : primary.withValues(alpha: 0.10),
+          ),
+        ),
+        child: Row(
+          children: [
+            // Время
+            Column(
+              children: [
+                Text(
+                  lesson.timeStart,
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                    color: primary,
+                  ),
+                ),
+                Text(
+                  lesson.timeEnd,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: onSurface.withValues(alpha: 0.4),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 12),
+            Container(
+              width: 3,
+              height: 32,
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 12),
+            // Предмет и детали
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    lesson.subject,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: onSurface,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (lesson.teacher != null && lesson.teacher!.isNotEmpty)
+                    Text(
+                      '${lesson.teacher}${lesson.room != null && lesson.room!.isNotEmpty ? ' • ${lesson.room}' : ''}',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: onSurface.withValues(alpha: 0.55),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Плитка задачи в панели «Сегодня» на главной.
+class _TodayTaskTile extends StatelessWidget {
+  final PersonalTask task;
+  const _TodayTaskTile({required this.task});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final onSurface = theme.colorScheme.onSurface;
+    final accent = isDark ? const Color(0xFFB49AFF) : AppColors.taskAccent;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark
+              ? accent.withValues(alpha: 0.06)
+              : accent.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: accent.withValues(alpha: isDark ? 0.2 : 0.15),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(
+              task.completed
+                  ? Icons.check_circle_rounded
+                  : Icons.radio_button_unchecked_rounded,
+              size: 20,
+              color: task.completed ? AppColors.success : accent,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    task.title,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                      color: task.completed
+                          ? onSurface.withValues(alpha: 0.5)
+                          : onSurface,
+                      decoration: task.completed
+                          ? TextDecoration.lineThrough
+                          : null,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  if (task.audience != null && task.audience!.isNotEmpty)
+                    Text(
+                      task.audience!,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: onSurface.withValues(alpha: 0.5),
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                ],
+              ),
+            ),
+            Text(
+              task.time,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: accent,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
