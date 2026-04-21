@@ -19,12 +19,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _language = 'ru';
 
   static const _accentOptions = [
-    (id: 'blue', name: 'Синий (ОмГТУ)', color: Color(0xFF6B9FFF)),
-    (id: 'green', name: 'Мятный', color: Color(0xFF6DD5A8)),
-    (id: 'purple', name: 'Лавандовый', color: Color(0xFFA78BFA)),
-    (id: 'rose', name: 'Розовый', color: Color(0xFFF9A8D4)),
-    (id: 'peach', name: 'Персиковый', color: Color(0xFFFBBF7E)),
-    (id: 'sky', name: 'Небесный', color: Color(0xFF7DD3FC)),
+    (id: 'blue', color: Color(0xFF8BB5F8)),
+    (id: 'green', color: Color(0xFF8EDCBC)),
+    (id: 'purple', color: Color(0xFFBBA8F5)),
+    (id: 'rose', color: Color(0xFFF5B8D4)),
+    (id: 'peach', color: Color(0xFFF5CC97)),
+    (id: 'sky', color: Color(0xFF96D9F7)),
   ];
 
   static const _languages = [
@@ -130,71 +130,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                GridView.count(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  crossAxisCount: 3,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  childAspectRatio: 1.5,
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: _accentOptions.map((t) {
                     final selected = selectedAccent.id == t.id;
-                    return Material(
-                      color: selected
-                          ? theme.colorScheme.primary.withValues(alpha: 0.12)
-                          : theme.cardColor,
-                      borderRadius: BorderRadius.circular(12),
-                      child: InkWell(
-                        onTap: () => themeNotifier.setAccentColor(t.color),
-                        borderRadius: BorderRadius.circular(12),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(12),
-                            border: Border.all(
-                              color: selected
-                                  ? theme.colorScheme.primary
-                                  : theme.dividerColor,
-                              width: 2,
+                    return GestureDetector(
+                      onTap: () => themeNotifier.setAccentColor(t.color),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 200),
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: t.color,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: selected
+                                ? theme.colorScheme.onSurface
+                                : Colors.transparent,
+                            width: 2.5,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: t.color.withValues(alpha: 0.3),
+                              blurRadius: selected ? 10 : 4,
+                              offset: const Offset(0, 2),
                             ),
-                          ),
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Container(
-                                width: 24,
-                                height: 24,
-                                decoration: BoxDecoration(
-                                  color: t.color,
-                                  shape: BoxShape.circle,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: t.color.withValues(alpha: 0.35),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
-                                    ),
-                                  ],
-                                ),
-                                child: selected
-                                    ? const Icon(Icons.check, size: 12, color: Colors.white)
-                                    : null,
-                              ),
-                              const SizedBox(height: 4),
-                              Flexible(child: Text(
-                                t.name,
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w500,
-                                  color: theme.colorScheme.onSurface,
-                                ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              )),
-                            ],
-                          ),
+                          ],
                         ),
+                        child: selected
+                            ? const Icon(Icons.check_rounded, size: 20, color: Colors.white)
+                            : null,
                       ),
                     );
                   }).toList(),

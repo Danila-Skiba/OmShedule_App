@@ -613,7 +613,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               if (hasTasks) ...[
                 Row(
                   children: [
-                    Icon(Icons.check_circle_outline_rounded, size: 14, color: AppColors.taskAccent),
+                    const Icon(Icons.check_circle_outline_rounded, size: 14, color: AppColors.taskAccent),
                     const SizedBox(width: 6),
                     Text(
                       'Задачи (${_todayTasks.length})',

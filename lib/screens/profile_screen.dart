@@ -7,6 +7,7 @@ import '../widgets/base_container.dart';
 import '../models/personal_task.dart';
 import '../widgets/app_progress.dart';
 import '../widgets/personal_task_card.dart';
+import 'add_task_screen.dart';
 
 /// Профиль
 class ProfileScreen extends StatefulWidget {
@@ -82,6 +83,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
         }
       }
     }
+  }
+
+  void _editTask(PersonalTask task) {
+    final dateParts = task.date.split('-');
+    final forDate = DateTime(
+      int.parse(dateParts[0]),
+      int.parse(dateParts[1]),
+      int.parse(dateParts[2]),
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => AddTaskScreen(
+          forDate: forDate,
+          onSaved: _loadTasks,
+          existingTask: task,
+        ),
+      ),
+    );
   }
 
   @override
@@ -168,6 +187,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 _buildTasksSection(completedTasks, totalTasks, completionRate),
                 const SizedBox(height: 16),
                 // _buildAchievements(),
+                SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
               ]),
             ),
           ),
@@ -303,6 +323,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               padding: const EdgeInsets.only(bottom: 8),
               child: PersonalTaskCard(
                 task: task,
+                onTap: () => _editTask(task),
                 showCompletedToggle: true,
                 onToggleCompleted: () => _toggleTask(task.id),
                 onDelete: () => _confirmDeleteTask(context, task),

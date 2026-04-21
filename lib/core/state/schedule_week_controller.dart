@@ -1,5 +1,4 @@
 import 'package:flutter/foundation.dart';
-import 'package:flutter/widgets.dart';
 
 import '../services/schedule_repository.dart';
 import '../services/schedule_cache_service.dart';
@@ -122,7 +121,39 @@ class ScheduleWeekController extends ChangeNotifier {
   // Загрузка
   // ---------------------------------------------------------------------------
 
+  /// Флаг: режим «Личное» (не нужно загружать расписание из API).
+  bool _isPersonalMode = false;
+
+  /// Устанавливает режим «Личное» — пропускает загрузку с API.
+  void setPersonalMode(bool value) {
+    _isPersonalMode = value;
+    if (value) {
+      _loadState = ScheduleLoadState.success;
+      _errorMessage = null;
+      _lessons = [];
+      notifyListeners();
+    }
+  }
+
   Future<void> _loadSchedule({bool prefetchAhead = false}) async {
+    // Если режим «Личное» — не загружаем расписание
+    if (_isPersonalMode) {
+      _loadState = ScheduleLoadState.success;
+      _errorMessage = null;
+      _lessons = [];
+      notifyListeners();
+      return;
+    }
+
+    // Если ни один фильтр не задан — нечего загружать
+    if (_groupIds == null && _teacherNames == null && _roomIds == null) {
+      _loadState = ScheduleLoadState.success;
+      _errorMessage = null;
+      _lessons = [];
+      notifyListeners();
+      return;
+    }
+
     _loadState = ScheduleLoadState.loading;
     _errorMessage = null;
     notifyListeners();

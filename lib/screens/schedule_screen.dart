@@ -1,15 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:omstu_schedule/core/services/schedule_cache_service.dart';
 import 'package:omstu_schedule/core/utils/week_service.dart';
 import 'package:omstu_schedule/widgets/base_container.dart';
 import 'package:omstu_schedule/data/schedule_data.dart';
 import '../constants/app_colors.dart';
-import '../constants/app_constants.dart';
 import '../core/services/settings_service.dart';
 import '../core/services/task_service.dart';
 import '../core/state/filter_controller.dart';
 import '../core/state/schedule_week_controller.dart';
+import '../data/building_data.dart';
 import '../models/lesson.dart';
 import '../models/personal_task.dart';
 import '../models/schedule_type.dart';
@@ -106,6 +107,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       initialTeacherNames: _filterTeacherNames,
       initialRoomIds: _filterRoomIds,
     );
+
+    // Если текущий режим — «Личное», сразу ставим personalMode
+    if (_filterController.isPersonal) {
+      _weekController.setPersonalMode(true);
+    }
 
     // Восстанавливаем выбранный день
     if (_SessionState.selectedDayIndex != null) {
@@ -241,6 +247,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   void _syncFiltersToController() {
     final ft = _filterController.currentFilterType.value;
+    final isPersonal = ft == FilterType.personal;
+    _weekController.setPersonalMode(isPersonal);
+
+    if (isPersonal) {
+      _filterGroupIds = null;
+      _filterTeacherNames = null;
+      _filterRoomIds = null;
+      return;
+    }
+
     String? groupIds;
     String? teacherNames;
     String? roomIds;
@@ -479,32 +495,28 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
     final dayTasks = _tasksForDate(date);
 
-    final merged = <({String time, Widget widget})>[];
+    final merged = <({String time, Widget widget, bool isLesson})>[];
     for (final l in dayLessons) {
       merged.add((
         time: l.timeStart,
-        widget: Padding(
-          padding: const EdgeInsets.only(bottom: 10),
-          child: _LessonCard(
-            lesson: l,
-            onTap: () => _showLessonDetails(l),
-            type: currentScheduleType,
-          ),
+        widget: _LessonCard(
+          lesson: l,
+          onTap: () => _showLessonDetails(l),
+          type: currentScheduleType,
         ),
+        isLesson: true,
       ));
     }
     if (isPersonal) {
       for (final t in dayTasks) {
         merged.add((
           time: t.time,
-          widget: Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: PersonalTaskCard(
-              task: t,
-              onTap: () => _editTask(t),
-              onDelete: () => _confirmDeleteTask(context, t),
-            ),
+          widget: PersonalTaskCard(
+            task: t,
+            onTap: () => _editTask(t),
+            onDelete: () => _confirmDeleteTask(context, t),
           ),
+          isLesson: false,
         ));
       }
     }
@@ -524,11 +536,69 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       );
     }
 
+    // Присваиваем номера парам (одинаковое время = один номер)
+    final lessonNumbers = _assignLessonNumbers(dayLessons);
+    final now = DateTime.now();
+    final isToday = date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
+
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
       itemCount: merged.length,
-      itemBuilder: (_, i) => merged[i].widget,
+      itemBuilder: (_, i) {
+        final item = merged[i];
+        if (!item.isLesson) {
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: item.widget,
+          );
+        }
+        // Найти номер для этой пары
+        final lessonCard = item.widget as _LessonCard;
+        final num = lessonNumbers[item.time] ?? (i + 1);
+        final isCurrent = isToday && _isLessonCurrently(lessonCard.lesson, now);
+        return Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: _NumberedLesson(
+            number: num,
+            isCurrent: isCurrent,
+            child: item.widget,
+          ),
+        );
+      },
     );
+  }
+
+  /// Присваивает номера парам: пары с одинаковым timeStart получают один номер.
+  Map<String, int> _assignLessonNumbers(List<Lesson> lessons) {
+    final sorted = List<Lesson>.from(lessons)
+      ..sort((a, b) => a.timeStart.compareTo(b.timeStart));
+    final map = <String, int>{};
+    var num = 0;
+    for (final l in sorted) {
+      if (!map.containsKey(l.timeStart)) {
+        num++;
+        map[l.timeStart] = num;
+      }
+    }
+    return map;
+  }
+
+  /// Проверяет, идёт ли пара прямо сейчас.
+  bool _isLessonCurrently(Lesson lesson, DateTime now) {
+    try {
+      final startParts = lesson.timeStart.split(':');
+      final endParts = lesson.timeEnd.split(':');
+      final startMinutes =
+          int.parse(startParts[0]) * 60 + int.parse(startParts[1]);
+      final endMinutes =
+          int.parse(endParts[0]) * 60 + int.parse(endParts[1]);
+      final nowMinutes = now.hour * 60 + now.minute;
+      return nowMinutes >= startMinutes && nowMinutes < endMinutes;
+    } catch (_) {
+      return false;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -617,9 +687,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               return GestureDetector(
                 onTap: () {
                   _filterController.setFilterType(item.$1);
-                  if (item.$1 != FilterType.personal) {
-                    _syncFiltersToController();
-                  }
+                  _syncFiltersToController();
                   _saveCurrentFilter();
                 },
                 child: BaseContainer(
@@ -859,9 +927,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       duration: const Duration(milliseconds: 180),
                       decoration: BoxDecoration(
                         color: isSelected
-                            ? AppColors.primaryLight
+                            ? theme.colorScheme.primary
                             : isToday
-                                ? AppColors.primaryLight.withValues(alpha: isDark ? 0.25 : 0.18)
+                                ? theme.colorScheme.primary.withValues(alpha: isDark ? 0.25 : 0.18)
                                 : theme.colorScheme.surfaceContainerHighest,
                         borderRadius: BorderRadius.circular(8),
                       ),
@@ -877,7 +945,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                               color: isSelected
                                   ? Colors.white
                                   : isToday
-                                      ? AppColors.primaryLight
+                                      ? theme.colorScheme.primary
                                       : theme.colorScheme.onSurface
                                           .withValues(alpha: 0.55),
                             ),
@@ -892,7 +960,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                               color: isSelected
                                   ? Colors.white
                                   : isToday
-                                      ? AppColors.primaryLight
+                                      ? theme.colorScheme.primary
                                       : theme.colorScheme.onSurface
                                           .withValues(alpha: 0.7),
                             ),
@@ -988,37 +1056,54 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         ),
       ));
 
-      final merged = <({String time, Widget widget})>[];
+      final merged = <({String time, Widget widget, bool isLesson})>[];
       for (final l in dayLessons) {
         merged.add((
           time: l.timeStart,
-          widget: Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _LessonCard(
-              lesson: l,
-              onTap: () => _showLessonDetails(l),
-              type: currentScheduleType,
-            ),
+          widget: _LessonCard(
+            lesson: l,
+            onTap: () => _showLessonDetails(l),
+            type: currentScheduleType,
           ),
+          isLesson: true,
         ));
       }
       if (isPersonal) {
         for (final t in dayTasks) {
           merged.add((
             time: t.time,
-            widget: Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: PersonalTaskCard(
-                task: t,
-                onDelete: () => _confirmDeleteTask(context, t),
-              ),
+            widget: PersonalTaskCard(
+              task: t,
+              onTap: () => _editTask(t),
+              onDelete: () => _confirmDeleteTask(context, t),
             ),
+            isLesson: false,
           ));
         }
       }
       merged.sort((a, b) => a.time.compareTo(b.time));
+
+      final lessonNums = _assignLessonNumbers(dayLessons);
+      final now = DateTime.now();
       for (final m in merged) {
-        items.add(m.widget);
+        if (m.isLesson) {
+          final lCard = m.widget as _LessonCard;
+          final num = lessonNums[m.time] ?? 0;
+          final isCurrent = isToday && _isLessonCurrently(lCard.lesson, now);
+          items.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _NumberedLesson(
+              number: num,
+              isCurrent: isCurrent,
+              child: m.widget,
+            ),
+          ));
+        } else {
+          items.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: m.widget,
+          ));
+        }
       }
       if (merged.isEmpty) {
         items.add(Padding(
@@ -1479,6 +1564,9 @@ class _LessonDetailsSheet extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final buildingInfo = BuildingData.findByAuditorium(lesson.room);
+
     return Container(
       padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
       decoration: BoxDecoration(
@@ -1516,7 +1604,7 @@ class _LessonDetailsSheet extends StatelessWidget {
           const SizedBox(height: 20),
           _DetailRow(
               icon: Icons.access_time_rounded,
-              iconColor: AppColors.primaryLight,
+              iconColor: theme.colorScheme.primary,
               label: 'Время',
               value: '${lesson.timeStart} – ${lesson.timeEnd}'),
           _DetailRow(
@@ -1526,7 +1614,7 @@ class _LessonDetailsSheet extends StatelessWidget {
               value: lesson.teacher ?? '—'),
           _DetailRow(
               icon: Icons.group_rounded,
-              iconColor: AppColors.primaryLight,
+              iconColor: theme.colorScheme.primary,
               label: 'Группа',
               value: lesson.group ??
                   lesson.subgroup ??
@@ -1539,7 +1627,207 @@ class _LessonDetailsSheet extends StatelessWidget {
               value: [lesson.room, lesson.building]
                   .where((s) => s != null && s.isNotEmpty)
                   .join(', ')),
+          if (buildingInfo != null) ...[
+            Padding(
+              padding: const EdgeInsets.only(bottom: 14),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                        shape: BoxShape.circle),
+                    child: Icon(Icons.apartment_rounded,
+                        color: theme.colorScheme.primary, size: 18),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Корпус',
+                            style: theme.textTheme.bodySmall?.copyWith(
+                                color: theme.colorScheme.onSurfaceVariant)),
+                        Text('${buildingInfo.name} — ${buildingInfo.address}',
+                            style: theme.textTheme.titleSmall
+                                ?.copyWith(fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: ElevatedButton.icon(
+                onPressed: () => _openMapChooser(context, buildingInfo),
+                icon: const Icon(Icons.map_rounded, size: 20),
+                label: const Text('Показать на карте'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: theme.colorScheme.primary,
+                  foregroundColor: theme.colorScheme.onPrimary,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  elevation: 0,
+                  textStyle: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  void _openMapChooser(BuildContext context, BuildingInfo info) {
+    final theme = Theme.of(context);
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
+        decoration: BoxDecoration(
+          color: theme.cardColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Center(
+              child: Container(
+                width: 36,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 16),
+                decoration: BoxDecoration(
+                  color: theme.dividerColor,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+            ),
+            Text(
+              'Показать на карте',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.onSurface,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              info.address,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+            const SizedBox(height: 20),
+            _RouteButton(
+              icon: Icons.map_rounded,
+              label: '2ГИС',
+              color: const Color(0xFF34A853),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _openIn2GIS(info);
+              },
+            ),
+            const SizedBox(height: 10),
+            _RouteButton(
+              icon: Icons.navigation_rounded,
+              label: 'Яндекс Карты',
+              color: const Color(0xFFFC3F1D),
+              onTap: () {
+                Navigator.of(ctx).pop();
+                _openInYandexMaps(info);
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _openIn2GIS(BuildingInfo info) async {
+    final query = Uri.encodeComponent('Омск, ${info.address}');
+    final webUri = Uri.parse('https://2gis.ru/omsk/search/$query');
+    await launchUrl(webUri, mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openInYandexMaps(BuildingInfo info) async {
+    final query = Uri.encodeComponent('Омск, ${info.address}');
+    final webUri = Uri.parse('https://yandex.ru/maps/?text=$query');
+    await launchUrl(webUri, mode: LaunchMode.externalApplication);
+  }
+}
+
+class _RouteButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _RouteButton({
+    required this.icon,
+    required this.label,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    return Material(
+      color: isDark
+          ? color.withValues(alpha: 0.12)
+          : color.withValues(alpha: 0.08),
+      borderRadius: BorderRadius.circular(14),
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: color.withValues(alpha: isDark ? 0.3 : 0.2),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, color: color, size: 20),
+              ),
+              const SizedBox(width: 14),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: theme.colorScheme.onSurface,
+                ),
+              ),
+              const Spacer(),
+              Icon(
+                Icons.arrow_forward_ios_rounded,
+                size: 16,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -1589,6 +1877,70 @@ class _DetailRow extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// Обёртка: номер пары слева от карточки.
+class _NumberedLesson extends StatelessWidget {
+  final int number;
+  final bool isCurrent;
+  final Widget child;
+
+  const _NumberedLesson({
+    required this.number,
+    required this.isCurrent,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final isDark = theme.brightness == Brightness.dark;
+    final color = isCurrent
+        ? primary
+        : theme.colorScheme.onSurface.withValues(alpha: 0.35);
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 28,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 14),
+            child: Center(
+              child: Container(
+                width: 24,
+                height: 24,
+                decoration: BoxDecoration(
+                  color: isCurrent
+                      ? primary.withValues(alpha: 0.15)
+                      : (isDark
+                          ? Colors.white.withValues(alpha: 0.06)
+                          : Colors.grey.withValues(alpha: 0.08)),
+                  shape: BoxShape.circle,
+                  border: isCurrent
+                      ? Border.all(color: primary.withValues(alpha: 0.4), width: 1.5)
+                      : null,
+                ),
+                child: Center(
+                  child: Text(
+                    '$number',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: color,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(child: child),
+      ],
     );
   }
 }

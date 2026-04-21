@@ -22,16 +22,18 @@ class ApiClient implements ScheduleRepository {
 
       try {
         
+        final startStr = '${period.startDate.year}.${period.startDate.month.toString().padLeft(2, '0')}.${period.startDate.day.toString().padLeft(2, '0')}';
+        final finishStr = '${period.endDate.year}.${period.endDate.month.toString().padLeft(2, '0')}.${period.endDate.day.toString().padLeft(2, '0')}';
         final url = Uri.parse('$baseUrl/${_getEndPoint(groupIds, teacherNames, roomIds)}').replace(
           queryParameters: {
-            'start': period.startDate.toIso8601String().replaceAll('-', '.'),
-            'finish': period.endDate.toIso8601String().replaceAll('-', '.'),
+            'start': startStr,
+            'finish': finishStr,
           }
         );
         final response = await client.get(url, headers: {'Content-Type': 'application/json; charset=utf-8',
           'Accept': 'application/json',});
         if (response.statusCode != 200) {
-          throw Exception('Failed to load schedule');
+          throw Exception('Failed to load schedule (status: ${response.statusCode})');
         }
         final List<dynamic> json = jsonDecode(response.body) as List<dynamic>;
     
@@ -48,10 +50,22 @@ class ApiClient implements ScheduleRepository {
   }
 
   String _getEndPoint(String? groupIds, String? teacherNames,  String? roomIds) {
-    if (groupIds != null) return 'group/${ScheduleData.getgroups[groupIds]}';
-    if (teacherNames != null) return 'person/${ScheduleData.getpersons[teacherNames]}';
-    if (roomIds != null) return 'auditorium/${ScheduleData.getauditorium[roomIds]}';
-    return '';
+    if (groupIds != null) {
+      final id = ScheduleData.getgroups[groupIds];
+      if (id == null) throw Exception('Unknown group: $groupIds');
+      return 'group/$id';
+    }
+    if (teacherNames != null) {
+      final id = ScheduleData.getpersons[teacherNames];
+      if (id == null) throw Exception('Unknown teacher: $teacherNames');
+      return 'person/$id';
+    }
+    if (roomIds != null) {
+      final id = ScheduleData.getauditorium[roomIds];
+      if (id == null) throw Exception('Unknown room: $roomIds');
+      return 'auditorium/$id';
+    }
+    throw Exception('No filter specified');
   }
 }
 class ScheduleLoadResult {
