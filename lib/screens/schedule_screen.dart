@@ -35,6 +35,7 @@ class _SessionState {
   static String view = 'today';
   static DateTime? selectedDate;
   static int? selectedDayIndex;
+  static bool filterBarVisible = true;
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
@@ -56,7 +57,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   String? _filterRoomIds;
 
   // Показ/скрытие панели фильтров по кнопке
-  bool _filterBarVisible = true;
+  bool _filterBarVisible = _SessionState.filterBarVisible;
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -388,7 +389,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               key: ValueKey(_filterBarVisible),
             ),
           ),
-          onPressed: () => setState(() => _filterBarVisible = !_filterBarVisible),
+          onPressed: () => setState(() {
+            _filterBarVisible = !_filterBarVisible;
+            _SessionState.filterBarVisible = _filterBarVisible;
+          }),
           tooltip: _filterBarVisible ? 'Скрыть фильтры' : 'Показать фильтры',
         ),
         IconButton(
@@ -436,7 +440,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       curve: Curves.easeInOut,
       height: _filterBarVisible
           ? (_filterController.isPersonal ? 66 : 106)
-          : 0,
+          : 8,
       clipBehavior: Clip.hardEdge,
       decoration: const BoxDecoration(),
       child: SingleChildScrollView(

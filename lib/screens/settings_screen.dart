@@ -19,12 +19,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _language = 'ru';
 
   static const _accentOptions = [
-    (id: 'blue', color: Color(0xFF8BB5F8)),
-    (id: 'green', color: Color(0xFF8EDCBC)),
-    (id: 'purple', color: Color(0xFFBBA8F5)),
-    (id: 'rose', color: Color(0xFFF5B8D4)),
-    (id: 'peach', color: Color(0xFFF5CC97)),
-    (id: 'sky', color: Color(0xFF96D9F7)),
+    (id: 'blue', color: Color(0xFFA8C8F0)),
+    (id: 'green', color: Color(0xFFA6D9C8)),
+    (id: 'purple', color: Color(0xFFCBBEE8)),
+    (id: 'rose', color: Color(0xFFF0C4D4)),
+    (id: 'peach', color: Color(0xFFF0D4AD)),
+    (id: 'sky', color: Color(0xFFADD8EB)),
   ];
 
   static const _languages = [

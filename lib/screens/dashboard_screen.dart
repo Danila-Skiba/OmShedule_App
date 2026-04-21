@@ -65,6 +65,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
               SliverList(
               delegate: SliverChildListDelegate([
                 const SizedBox(height: 8),
+                _buildSemesterTimer(context),
+                const SizedBox(height: 12),
                 _buildTodayPanel(context),
                 const SizedBox(height: 16),
                 _buildNewsSection(_news),
@@ -437,6 +439,97 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
     );
+  }
+
+  Widget _buildSemesterTimer(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final now = DateTime.now();
+
+    // Конец весеннего семестра — 30 июня, осеннего — 31 декабря
+    final semesterEnd = now.month <= 6
+        ? DateTime(now.year, 6, 30)
+        : DateTime(now.year, 12, 31);
+    final diff = semesterEnd.difference(now);
+    final days = diff.inDays;
+    final hours = diff.inHours % 24;
+
+    // Выбираем фразу
+    String phrase;
+    if (days <= 0) {
+      phrase = 'Каникулы!!! 🎉';
+    } else if (days <= 7) {
+      phrase = 'Финишная прямая... 🏃';
+    } else if (days <= 30) {
+      phrase = 'Скоро свобода! 💪';
+    } else if (days <= 60) {
+      phrase = 'Половина пути ⏳';
+    } else {
+      phrase = 'Терпим... 📚';
+    }
+
+    final daysWord = _pluralDays(days);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        decoration: BoxDecoration(
+          color: isDark
+              ? theme.colorScheme.primary.withValues(alpha: 0.10)
+              : theme.colorScheme.primary.withValues(alpha: 0.07),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    phrase,
+                    style: theme.textTheme.titleSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: theme.colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    days <= 0
+                        ? 'Семестр окончен'
+                        : 'До конца семестра $days $daysWord ${hours}ч',
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (days > 0)
+              Text(
+                '$days',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.w800,
+                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _pluralDays(int n) {
+    final mod10 = n % 10;
+    final mod100 = n % 100;
+    if (mod100 >= 11 && mod100 <= 19) return 'дней';
+    if (mod10 == 1) return 'день';
+    if (mod10 >= 2 && mod10 <= 4) return 'дня';
+    return 'дней';
   }
 
   Widget _buildTodayPanel(BuildContext context) {
