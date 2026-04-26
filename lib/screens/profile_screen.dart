@@ -1,9 +1,12 @@
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 import '../constants/app_colors.dart';
 import '../core/services/task_service.dart';
 import '../widgets/base_container.dart';
+import '../widgets/app_dialog.dart';
+import '../widgets/app_snackbar.dart';
 import '../models/personal_task.dart';
 import '../widgets/app_progress.dart';
 import '../widgets/personal_task_card.dart';
@@ -46,40 +49,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _confirmDeleteTask(BuildContext context, PersonalTask task) async {
-    final confirmed = await showDialog<bool>(
+    final confirmed = await AppDialog.show(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Удалить задачу?'),
-        content: Text('«${task.title}» будет удалена.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('Отмена'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: Text(
-              'Удалить',
-              style: TextStyle(color: Theme.of(ctx).colorScheme.error),
-            ),
-          ),
-        ],
-      ),
+      icon: Icons.delete_outline_rounded,
+      title: 'Удалить задачу?',
+      message: '«${task.title}» будет удалена.',
+      confirmText: 'Удалить',
+      isDanger: true,
     );
     if (confirmed == true && mounted) {
       try {
         await TaskService.instance.deleteTask(task.id);
         await _loadTasks();
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Задача удалена')),
-          );
+          AppSnackBar.success(context, 'Задача удалена');
         }
       } catch (e) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Ошибка удаления: $e')),
-          );
+          AppSnackBar.error(context, 'Ошибка удаления: $e');
         }
       }
     }
@@ -198,6 +185,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildStatistics(int completionRate) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final onSurf = theme.colorScheme.onSurface;
     final onSurfVar = theme.colorScheme.onSurfaceVariant;
     final primary = theme.colorScheme.primary;
@@ -205,6 +193,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       children: [
         Expanded(
           child: BaseContainer(
+            isGlass: isDark,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,6 +218,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
         const SizedBox(width: 12),
         Expanded(
           child: BaseContainer(
+            isGlass: isDark,
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -267,9 +257,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Widget _buildTasksSection(int completedTasks, int totalTasks, int completionRate) {
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     final grouped = _groupTasksByDate(_taskList);
 
     return BaseContainer(
+      isGlass: isDark,
       padding: const EdgeInsets.all(16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

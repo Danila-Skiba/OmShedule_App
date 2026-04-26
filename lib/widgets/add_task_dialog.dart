@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../core/services/task_service.dart';
 import '../models/personal_task.dart';
+import 'app_snackbar.dart';
 
 /// Форма добавления личной задачи.
 /// Поля: название, время (обязательное), аудитория (опционально).
@@ -53,9 +54,7 @@ class _AddTaskDialogState extends State<AddTaskDialog> {
     if (!_validate()) return;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите название задачи')),
-      );
+      AppSnackBar.show(context, message: 'Введите название задачи', icon: Icons.edit_outlined);
       return;
     }
     final task = PersonalTask(
@@ -76,9 +75,7 @@ class _AddTaskDialogState extends State<AddTaskDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка сохранения: $e')),
-        );
+        AppSnackBar.error(context, 'Ошибка сохранения: $e');
       }
     }
   }

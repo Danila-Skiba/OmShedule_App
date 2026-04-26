@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omstu_schedule/core/services/schedule_news.dart';
@@ -9,6 +11,7 @@ import '../models/lesson.dart';
 import '../models/news.dart';
 import '../models/personal_task.dart';
 import '../widgets/app_progress.dart';
+import '../widgets/app_snackbar.dart';
 import '../core/services/settings_service.dart';
 import '../core/services/schedule_cache_service.dart';
 import '../core/services/schedule_repository.dart';
@@ -157,8 +160,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     });
   }
 
-  AppBar _buildAppBar(BuildContext context) {
-    // final theme = Theme.of(context);
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
     return AppBar(
         title: const Text('Расписание ОмГТУ'),
         actions: [
@@ -175,30 +177,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final isDark = theme.brightness == Brightness.dark;
     showDialog<void>(
       context: context,
-      barrierColor: Colors.black54,
+      barrierColor: Colors.black38,
       builder: (ctx) => Center(
         child: Material(
           color: Colors.transparent,
-          child: Container(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(AppConstants.radiusLg),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 30, sigmaY: 30),
+              child: Container(
             margin: const EdgeInsets.symmetric(horizontal: 32),
             constraints: const BoxConstraints(maxWidth: 280),
             decoration: BoxDecoration(
-              color: (isDark ? AppColors.cardDark : Colors.white).withValues(alpha: 0.92),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: isDark
+                    ? [
+                        Colors.white.withOpacity(0.1),
+                        Colors.white.withOpacity(0.05),
+                      ]
+                    : [
+                        Colors.white.withOpacity(0.75),
+                        Colors.white.withOpacity(0.55),
+                      ],
+              ),
               borderRadius: BorderRadius.circular(AppConstants.radiusLg),
               border: Border.all(
-                color: (isDark ? AppColors.borderDark : AppColors.border).withValues(alpha: 0.5),
+                color: isDark
+                    ? Colors.white.withOpacity(0.15)
+                    : Colors.white.withOpacity(0.8),
+                width: 0.5,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.15),
-                  blurRadius: 20,
+                  color: Colors.black.withOpacity(isDark ? 0.4 : 0.1),
+                  blurRadius: 25,
                   offset: const Offset(0, 8),
+                  spreadRadius: -4,
                 ),
               ],
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(AppConstants.radiusLg),
-              child: Column(
+            child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _PopupTile(
@@ -230,6 +250,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
+          ),
         ),
       ),
     );
@@ -237,9 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   void _logout(BuildContext context) {
     if (context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Выход выполнен')),
-      );
+      AppSnackBar.success(context, 'Выход выполнен');
     }
   }
 
@@ -475,13 +494,34 @@ class _DashboardScreenState extends State<DashboardScreen> {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
         decoration: BoxDecoration(
-          color: isDark
-              ? theme.colorScheme.primary.withValues(alpha: 0.10)
-              : theme.colorScheme.primary.withValues(alpha: 0.07),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [
+                    theme.colorScheme.primary.withOpacity(0.12),
+                    theme.colorScheme.primary.withOpacity(0.06),
+                  ]
+                : [
+                    theme.colorScheme.primary.withOpacity(0.12),
+                    theme.colorScheme.primary.withOpacity(0.06),
+                  ],
+          ),
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: theme.colorScheme.primary.withValues(alpha: 0.15),
+            color: isDark
+                ? theme.colorScheme.primary.withOpacity(0.2)
+                : theme.colorScheme.primary.withOpacity(0.18),
           ),
+          boxShadow: isDark
+              ? null
+              : [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withOpacity(0.08),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
         ),
         child: Row(
           children: [
@@ -500,9 +540,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   Text(
                     days <= 0
                         ? 'Семестр окончен'
-                        : 'До конца семестра $days $daysWord ${hours}ч',
+                        : 'До конца семестра $days $daysWord $hoursч',
                     style: theme.textTheme.bodySmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
+                      color: isDark
+                          ? theme.colorScheme.onSurfaceVariant
+                          : theme.colorScheme.onSurface.withOpacity(0.6),
                     ),
                   ),
                 ],
@@ -514,7 +556,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 style: TextStyle(
                   fontSize: 32,
                   fontWeight: FontWeight.w800,
-                  color: theme.colorScheme.primary.withValues(alpha: 0.25),
+                  color: theme.colorScheme.primary.withOpacity(isDark ? 0.25 : 0.2),
                 ),
               ),
           ],
@@ -547,6 +589,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16),
       child: BaseContainer(
+        isGlass: isDark,
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1133,6 +1176,7 @@ class _NewsCard extends StatelessWidget {
     final secondaryText = onSurface.withValues(alpha: 0.6);
 
     return BaseContainer(
+      isGlass: isDark,
       margin: const EdgeInsets.only(left: 16, bottom: 24, top: 10),
       padding: const EdgeInsets.all(12),
       child: Column(

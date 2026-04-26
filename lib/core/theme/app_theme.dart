@@ -23,6 +23,9 @@ class AppTheme {
     );
 
     return base.copyWith(
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      splashColor: Colors.transparent,
       scaffoldBackgroundColor: AppColors.background,
       primaryColor: primary,
       colorScheme: ColorScheme.light(
@@ -53,7 +56,7 @@ class AppTheme {
       ),
       dividerColor: AppColors.divider,
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.background,
+        backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -98,6 +101,25 @@ class AppTheme {
         elevation: 0,
         surfaceTintColor: Colors.transparent,
       ),
+      segmentedButtonTheme: SegmentedButtonThemeData(
+        style: ButtonStyle(
+          backgroundColor: WidgetStateProperty.resolveWith((s) {
+            return s.contains(WidgetState.selected)
+                ? primary.withOpacity(0.12)
+                : Colors.white.withOpacity(0.5);
+          }),
+          foregroundColor: WidgetStateProperty.resolveWith((s) {
+            return s.contains(WidgetState.selected)
+                ? primary
+                : AppColors.textSecondary;
+          }),
+          side: WidgetStateProperty.all(
+              BorderSide(color: AppColors.border.withOpacity(0.5))),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+        ),
+      ),
     );
   }
 
@@ -115,6 +137,9 @@ class AppTheme {
     );
 
     return base.copyWith(
+      splashFactory: NoSplash.splashFactory,
+      highlightColor: Colors.transparent,
+      splashColor: Colors.transparent,
       scaffoldBackgroundColor: AppColors.backgroundDark,
       primaryColor: primary,
       colorScheme: ColorScheme.dark(
@@ -145,7 +170,7 @@ class AppTheme {
       ),
       dividerColor: AppColors.dividerDark,
       appBarTheme: AppBarTheme(
-        backgroundColor: AppColors.backgroundDark,
+        backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimaryDark,
         elevation: 0,
         scrolledUnderElevation: 0,
@@ -197,7 +222,7 @@ class AppTheme {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((s) {
             return s.contains(WidgetState.selected)
-                ? primary.withValues(alpha: 0.22)
+                ? primary.withOpacity(0.22)
                 : AppColors.backgroundAltDark;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((s) {
@@ -207,6 +232,9 @@ class AppTheme {
           }),
           side: WidgetStateProperty.all(
               const BorderSide(color: AppColors.borderDark)),
+          shape: WidgetStateProperty.all(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
         ),
       ),
       dialogTheme: DialogThemeData(
@@ -238,7 +266,7 @@ class AppTheme {
         style: ButtonStyle(
           foregroundColor: WidgetStateProperty.all(primary),
           overlayColor:
-              WidgetStateProperty.all(primary.withValues(alpha: 0.1)),
+              WidgetStateProperty.all(primary.withOpacity(0.1)),
         ),
       ),
       iconTheme: const IconThemeData(color: AppColors.textPrimaryDark),

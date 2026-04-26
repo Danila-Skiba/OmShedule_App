@@ -10,6 +10,19 @@ import 'screens/maps_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/settings_screen.dart';
+import 'screens/lecture_notes_screen.dart';
+
+/// Плавный переход между вкладками (fade).
+CustomTransitionPage<void> _fadePage(Widget child, GoRouterState state) {
+  return CustomTransitionPage<void>(
+    key: state.pageKey,
+    child: child,
+    transitionDuration: const Duration(milliseconds: 150),
+    transitionsBuilder: (context, animation, secondaryAnimation, child) {
+      return FadeTransition(opacity: animation, child: child);
+    },
+  );
+}
 
 /// Маршрутизация (эквивалент routes.tsx createBrowserRouter)
 final GoRouter appRouter = GoRouter(
@@ -20,15 +33,13 @@ final GoRouter appRouter = GoRouter(
       routes: [
         GoRoute(
           path: '/',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: DashboardScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              _fadePage(const DashboardScreen(), state),
         ),
         GoRoute(
           path: '/schedule',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ScheduleScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              _fadePage(const ScheduleScreen(), state),
           routes: [
             // GoRoute(
             //   path: 'filter',
@@ -97,29 +108,30 @@ final GoRouter appRouter = GoRouter(
         ),
         GoRoute(
           path: '/maps',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: MapsScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              _fadePage(const MapsScreen(), state),
+        ),
+        GoRoute(
+          path: '/notes',
+          pageBuilder: (context, state) =>
+              _fadePage(const LectureNotesScreen(), state),
         ),
         GoRoute(
           path: '/profile',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ProfileScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              _fadePage(const ProfileScreen(), state),
         ),
         GoRoute(
           path: '/chat',
-          pageBuilder: (context, state) => const NoTransitionPage(
-            child: ChatScreen(),
-          ),
+          pageBuilder: (context, state) =>
+              _fadePage(const ChatScreen(), state),
         ),
       ],
     ),
     GoRoute(
       path: '/settings',
-      pageBuilder: (context, state) => const NoTransitionPage(
-        child: SettingsScreen(),
-      ),
+      pageBuilder: (context, state) =>
+          _fadePage(const SettingsScreen(), state),
     ),
   ],
 );

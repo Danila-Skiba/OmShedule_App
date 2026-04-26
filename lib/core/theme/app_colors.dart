@@ -16,17 +16,17 @@ class AppColors {
   static const Color textSecondary = Color(0xFF64748B);
   static const Color textMuted     = Color(0xFF94A3B8);
 
-  static const Color success = Color(0xFF34D399);
-  static const Color warning = Color(0xFFFBBF24);
-  static const Color error   = Color(0xFFF87171);
+  static const Color success = Color(0xFF5CC9A0);
+  static const Color warning = Color(0xFFE8B44C);
+  static const Color error   = Color(0xFFE07676);
 
   static const Color taskAccent = Color(0xFFA78BFA);
 
-  // Hint (light) — фон карточек занятий в светлой теме (пастельные)
-  static const Color hintprimary = Color(0xFFE8F0FE);
-  static const Color hintwarning = Color(0xFFFFF8E1);
-  static const Color hinterror   = Color(0xFFFEECEC);
-  static const Color hintsuccess = Color(0xFFE6FAF0);
+  // Hint (light) — фон карточек занятий в светлой теме (мягкие, приглушённые)
+  static const Color hintprimary = Color(0xFFEDF2FB);
+  static const Color hintwarning = Color(0xFFFDF6E3);
+  static const Color hinterror   = Color(0xFFFDF0F0);
+  static const Color hintsuccess = Color(0xFFEDF8F3);
   static const Color hintTask    = Color(0xFFF3EEFF);
 
   // Hint (dark) — фон карточки «Личное» в тёмной теме

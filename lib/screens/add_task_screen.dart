@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../core/services/task_service.dart';
 import '../models/personal_task.dart';
+import '../widgets/app_snackbar.dart';
 
 /// Полноценная страница добавления / редактирования личной задачи.
 /// Поля: Название, Время (CupertinoPicker), Описание.
@@ -71,9 +72,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
   Future<void> _save() async {
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Введите название задачи')),
-      );
+      AppSnackBar.show(context, message: 'Введите название задачи', icon: Icons.edit_outlined);
       return;
     }
 
@@ -102,9 +101,7 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Ошибка сохранения: $e')),
-        );
+        AppSnackBar.error(context, 'Ошибка сохранения: $e');
       }
     }
   }

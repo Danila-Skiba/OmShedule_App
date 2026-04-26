@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
@@ -18,14 +19,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _notifications = true;
   String _language = 'ru';
 
-  static const _accentOptions = [
-    (id: 'blue', color: Color(0xFFA8C8F0)),
-    (id: 'green', color: Color(0xFFA6D9C8)),
-    (id: 'purple', color: Color(0xFFCBBEE8)),
-    (id: 'rose', color: Color(0xFFF0C4D4)),
-    (id: 'peach', color: Color(0xFFF0D4AD)),
-    (id: 'sky', color: Color(0xFFADD8EB)),
-  ];
+static const _accentOptions = [
+    (id: 'blue', color: Color(0xFF6D8FAC)),   // приглушённый синий
+    (id: 'green', color: Color(0xFF6F9E8C)),  // пыльный зелёный
+    (id: 'purple', color: Color(0xFF8F82B3)), // мягкий серо-фиолетовый
+    (id: 'rose', color: Color(0xFFB8849A)),   // припылённая роза
+    (id: 'peach', color: Color(0xFFC0946E)),  // тёмный пастельный персик
+    (id: 'sky', color: Color(0xFF6E9EAD)),    // дымчато-голубой
+];
 
   static const _languages = [
     (id: 'ru', name: 'Русский', flag: '🇷🇺'),
@@ -74,7 +75,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
 
     final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
     return BaseContainer(
+      isGlass: isDark,
       padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -96,7 +99,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ],
             ),
           ),
-          Divider(height: 1, color: theme.dividerColor),
+          Divider(height: 1, color: theme.dividerColor.withOpacity(0.3)),
           Padding(
             padding: const EdgeInsets.all(16),
             child: Column(

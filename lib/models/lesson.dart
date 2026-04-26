@@ -27,6 +27,7 @@ class Lesson {
   final int dayOfWeek;
   final String? date;
   final String? subgroup;
+  final int duration; 
   // final LessonStatus? status;
   // final String? groupId;
   final String? group;
@@ -42,10 +43,12 @@ class Lesson {
     required this.timeStart,
     required this.timeEnd,
     required this.dayOfWeek,
+    required this.duration,
     this.subgroup,
     this.stream,
     this.group, 
     this.date,
+
   });
 
   String get typeLabel {
@@ -79,6 +82,10 @@ class Lesson {
     group: json['group']?.toString(),
     subgroup: json['subGroup']?.toString(),
     stream: json['stream']?.toString(),
+    duration: json['lessonNumberStart'] is int 
+        ? json['lessonNumberStart'] as int 
+        : int.tryParse(json['lessonNumberStart']?.toString() ?? '0') ?? 0
+
   );
 }
 
