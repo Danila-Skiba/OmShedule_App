@@ -5,6 +5,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'app_router.dart';
 import 'core/services/settings_service.dart';
+import 'core/services/auth_service.dart';
 import 'core/theme/theme_notifier.dart';
 
 void main() async {
@@ -22,6 +23,8 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
+  // Инициализируем сервис авторизации (проверка токена)
+  await AuthService.instance.init();
   runApp(const OmstuScheduleApp());
 }
 
@@ -30,8 +33,11 @@ class OmstuScheduleApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => ThemeNotifier(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => ThemeNotifier()),
+        ChangeNotifierProvider.value(value: AuthService.instance),
+      ],
       child: Consumer<ThemeNotifier>(
         builder: (context, themeNotifier, _) {
           return MaterialApp.router(

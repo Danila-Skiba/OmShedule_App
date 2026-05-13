@@ -39,7 +39,7 @@ class _SessionState {
   static String view = 'today';
   static DateTime? selectedDate;
   static int? selectedDayIndex;
-  static bool filterBarVisible = true;
+  static bool filterBarVisible = false;
 }
 
 class _ScheduleScreenState extends State<ScheduleScreen> {
@@ -486,12 +486,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     if (isPersonal) {
       dayLessons = [];
     } else if (_weekController.currentWeek.contains(date)) {
-      // Текущая неделя уже загружена
       dayLessons = _weekController.lessons
           .where((l) => l.dayOfWeek == dayOfWeek)
           .toList();
     } else {
-      // Соседняя неделя — пробуем взять из кеша
       final week = WeekService.getWeekForDate(date);
       final cached = ScheduleCacheService.instance.getCachedLessons(
         week,
@@ -503,35 +501,31 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     }
 
     final dayTasks = _tasksForDate(date);
+    final lessonNumbers = _assignLessonNumbers(dayLessons);
+    final now = DateTime.now();
+    final isToday = date.year == now.year &&
+        date.month == now.month &&
+        date.day == now.day;
 
-    final merged = <({String time, Widget widget, bool isLesson})>[];
+    // Группируем пары по временному слоту
+    final Map<String, List<Lesson>> lessonsByTime = {};
     for (final l in dayLessons) {
-      merged.add((
-        time: l.timeStart,
-        widget: _LessonCard(
-          lesson: l,
-          onTap: () => _showLessonDetails(l),
-          type: currentScheduleType,
-        ),
-        isLesson: true,
-      ));
+      lessonsByTime.putIfAbsent(l.timeStart, () => []).add(l);
+    }
+
+    // Строим единый список: {время, уроки или задача}
+    final allSlots = <({String time, bool isLesson, List<Lesson>? lessons, PersonalTask? task})>[];
+    for (final time in lessonsByTime.keys) {
+      allSlots.add((time: time, isLesson: true, lessons: lessonsByTime[time], task: null));
     }
     if (isPersonal) {
       for (final t in dayTasks) {
-        merged.add((
-          time: t.time,
-          widget: PersonalTaskCard(
-            task: t,
-            onTap: () => _editTask(t),
-            onDelete: () => _confirmDeleteTask(context, t),
-          ),
-          isLesson: false,
-        ));
+        allSlots.add((time: t.time, isLesson: false, lessons: null, task: t));
       }
     }
-    merged.sort((a, b) => a.time.compareTo(b.time));
+    allSlots.sort((a, b) => a.time.compareTo(b.time));
 
-    if (merged.isEmpty) {
+    if (allSlots.isEmpty) {
       return Center(
         child: Text(
           isPersonal ? 'Задач нет' : 'Занятий нет',
@@ -545,63 +539,55 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       );
     }
 
-    // Присваиваем номера парам (одинаковое время = один номер)
-    final lessonNumbers = _assignLessonNumbers(dayLessons);
-    final now = DateTime.now();
-    final isToday = date.year == now.year &&
-        date.month == now.month &&
-        date.day == now.day;
-
-    // Подсчитаем, сколько пар на каждое время, чтобы показать разделитель
-    final timeGroupCounts = <String, int>{};
-    for (final m in merged) {
-      if (m.isLesson) {
-        timeGroupCounts[m.time] = (timeGroupCounts[m.time] ?? 0) + 1;
+    final displayItems = <Widget>[];
+    for (final slot in allSlots) {
+      if (!slot.isLesson) {
+        final t = slot.task!;
+        displayItems.add(Padding(
+          padding: const EdgeInsets.only(bottom: 10),
+          child: PersonalTaskCard(
+            task: t,
+            onTap: () => _editTask(t),
+            onDelete: () => _confirmDeleteTask(context, t),
+          ),
+        ));
+      } else {
+        final lessons = slot.lessons!;
+        final num = lessonNumbers[slot.time] ?? 1;
+        if (lessons.length == 1) {
+          final lesson = lessons.first;
+          final isCurrent = isToday && _isLessonCurrently(lesson, now);
+          displayItems.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _LessonCard(
+              lesson: lesson,
+              onTap: () => _showLessonDetails(lesson),
+              type: currentScheduleType,
+              pairNumber: num,
+              isCurrent: isCurrent,
+            ),
+          ));
+        } else {
+          // Несколько пар на один слот — горизонтальный скролл
+          displayItems.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: _LessonGroupPageView(
+              lessons: lessons,
+              onTap: _showLessonDetails,
+              type: currentScheduleType,
+              pairNumber: num,
+              isCurrentCheck: isToday
+                  ? (l) => _isLessonCurrently(l, now)
+                  : (_) => false,
+            ),
+          ));
+        }
       }
     }
 
-    return ListView.builder(
+    return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
-      itemCount: merged.length,
-      itemBuilder: (_, i) {
-        final item = merged[i];
-        if (!item.isLesson) {
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: item.widget,
-          );
-        }
-        // Найти номер для этой пары
-        final lessonCard = item.widget as _LessonCard;
-        final num = lessonNumbers[item.time] ?? (i + 1);
-        final isCurrent = isToday && _isLessonCurrently(lessonCard.lesson, now);
-
-        // Разделитель: если на это время >1 пары и следующий элемент — другое время
-        final needsDivider = (timeGroupCounts[item.time] ?? 0) > 1 &&
-            (i + 1 < merged.length) &&
-            merged[i + 1].time != item.time;
-
-        return Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _LessonCard(
-                lesson: lessonCard.lesson,
-                onTap: lessonCard.onTap,
-                type: lessonCard.type,
-                pairNumber: num,
-                isCurrent: isCurrent,
-              ),
-            ),
-            if (needsDivider)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 10),
-                child: _TimeGroupDivider(),
-              ),
-          ],
-        );
-      },
+      children: displayItems,
     );
   }
 
@@ -872,7 +858,6 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         onTap: () => setState(() {
           _view = value;
           _SessionState.view = value;
-          // При возврате в дневной вид — синхронизируем PageController
           if (value == 'today') {
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (_dayPageController.hasClients) {
@@ -1114,78 +1099,71 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         ),
       ));
 
-      final merged = <({String time, Widget widget, bool isLesson})>[];
+      final lessonNums = _assignLessonNumbers(dayLessons);
+      final now = DateTime.now();
+
+      // Группируем пары по временному слоту
+      final Map<String, List<Lesson>> wkLessonsByTime = {};
       for (final l in dayLessons) {
-        merged.add((
-          time: l.timeStart,
-          widget: _LessonCard(
-            lesson: l,
-            onTap: () => _showLessonDetails(l),
-            type: currentScheduleType,
-          ),
-          isLesson: true,
-        ));
+        wkLessonsByTime.putIfAbsent(l.timeStart, () => []).add(l);
+      }
+
+      final wkSlots = <({String time, bool isLesson, List<Lesson>? lessons, PersonalTask? task})>[];
+      for (final time in wkLessonsByTime.keys) {
+        wkSlots.add((time: time, isLesson: true, lessons: wkLessonsByTime[time], task: null));
       }
       if (isPersonal) {
         for (final t in dayTasks) {
-          merged.add((
-            time: t.time,
-            widget: PersonalTaskCard(
+          wkSlots.add((time: t.time, isLesson: false, lessons: null, task: t));
+        }
+      }
+      wkSlots.sort((a, b) => a.time.compareTo(b.time));
+
+      for (final slot in wkSlots) {
+        if (!slot.isLesson) {
+          final t = slot.task!;
+          items.add(Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: PersonalTaskCard(
               task: t,
               onTap: () => _editTask(t),
               onDelete: () => _confirmDeleteTask(context, t),
             ),
-            isLesson: false,
           ));
-        }
-      }
-      merged.sort((a, b) => a.time.compareTo(b.time));
-
-      final lessonNums = _assignLessonNumbers(dayLessons);
-      final now = DateTime.now();
-
-      // Подсчёт пар на каждое время для разделителей
-      final wkTimeGroupCounts = <String, int>{};
-      for (final m in merged) {
-        if (m.isLesson) {
-          wkTimeGroupCounts[m.time] = (wkTimeGroupCounts[m.time] ?? 0) + 1;
-        }
-      }
-
-      for (var mi = 0; mi < merged.length; mi++) {
-        final m = merged[mi];
-        if (m.isLesson) {
-          final lCard = m.widget as _LessonCard;
-          final num = lessonNums[m.time] ?? 0;
-          final isCurrent = isToday && _isLessonCurrently(lCard.lesson, now);
-          items.add(Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: _LessonCard(
-              lesson: lCard.lesson,
-              onTap: lCard.onTap,
-              type: lCard.type,
-              pairNumber: num,
-              isCurrent: isCurrent,
-            ),
-          ));
-          // Разделитель после группы пар на одно время
-          final needsDivider = (wkTimeGroupCounts[m.time] ?? 0) > 1 &&
-              (mi + 1 < merged.length) &&
-              merged[mi + 1].time != m.time;
-          if (needsDivider) {
+        } else {
+          final lessons = slot.lessons!;
+          final num = lessonNums[slot.time] ?? 1;
+          if (lessons.length == 1) {
+            final lesson = lessons.first;
+            final isCurrent = isToday && _isLessonCurrently(lesson, now);
             items.add(Padding(
               padding: const EdgeInsets.only(bottom: 10),
-              child: _TimeGroupDivider(),
+              child: _LessonCard(
+                lesson: lesson,
+                onTap: () => _showLessonDetails(lesson),
+                type: currentScheduleType,
+                pairNumber: num,
+                isCurrent: isCurrent,
+              ),
+            ));
+          } else {
+            items.add(Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: _LessonGroupPageView(
+                lessons: lessons,
+                onTap: _showLessonDetails,
+                type: currentScheduleType,
+                pairNumber: num,
+                isCurrentCheck: isToday
+                    ? (l) => _isLessonCurrently(l, now)
+                    : (_) => false,
+              ),
             ));
           }
-        } else {
-          items.add(Padding(
-            padding: const EdgeInsets.only(bottom: 10),
-            child: m.widget,
-          ));
         }
       }
-      if (merged.isEmpty) {
+
+      if (wkSlots.isEmpty) {
         items.add(Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Text(
@@ -1412,21 +1390,106 @@ Color _lessonTypeChipColor(LessonType type, bool isDark) {
   }
 }
 
-/// Тонкая разделительная линия после группы пар на одно время (подгруппы).
-class _TimeGroupDivider extends StatelessWidget {
+/// Переключатель для нескольких пар на одно время (разные подгруппы).
+/// Свайп между карточками + минималистичные точки снизу.
+class _LessonGroupPageView extends StatefulWidget {
+  final List<Lesson> lessons;
+  final void Function(Lesson) onTap;
+  final ScheduleType type;
+  final int? pairNumber;
+  final bool Function(Lesson) isCurrentCheck;
+
+  const _LessonGroupPageView({
+    required this.lessons,
+    required this.onTap,
+    required this.type,
+    this.pairNumber,
+    required this.isCurrentCheck,
+  });
+
+  @override
+  State<_LessonGroupPageView> createState() => _LessonGroupPageViewState();
+}
+
+class _LessonGroupPageViewState extends State<_LessonGroupPageView> {
+  int _currentIndex = 0;
+  late final PageController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = PageController();
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
-      child: Divider(
-        height: 1,
-        thickness: 1,
-        color: isDark
-            ? Colors.white.withValues(alpha: 0.07)
-            : theme.colorScheme.primary.withValues(alpha: 0.1),
-      ),
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Карточки — свайп через PageView
+        SizedBox(
+          height: 120,
+          child: PageView.builder(
+            controller: _ctrl,
+            itemCount: widget.lessons.length,
+            physics: const BouncingScrollPhysics(),
+            onPageChanged: (p) => setState(() => _currentIndex = p),
+            itemBuilder: (context, i) {
+              final lesson = widget.lessons[i];
+              return _LessonCard(
+                lesson: lesson,
+                onTap: () => widget.onTap(lesson),
+                type: widget.type,
+                pairNumber: widget.pairNumber,
+                isCurrent: widget.isCurrentCheck(lesson),
+              );
+            },
+          ),
+        ),
+        // Точки-переключатели
+        if (widget.lessons.length > 1)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: List.generate(widget.lessons.length, (i) {
+                final isActive = i == _currentIndex;
+                return GestureDetector(
+                  onTap: () {
+                    _ctrl.animateToPage(i,
+                        duration: const Duration(milliseconds: 280),
+                        curve: Curves.easeInOut);
+                  },
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    margin: const EdgeInsets.symmetric(horizontal: 3),
+                    width: isActive ? 18 : 6,
+                    height: 6,
+                    decoration: BoxDecoration(
+                      color: isActive
+                          ? primary
+                          : (isDark
+                              ? onSurface.withValues(alpha: 0.2)
+                              : primary.withValues(alpha: 0.2)),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                  ),
+                );
+              }),
+            ),
+          ),
+      ],
     );
   }
 }
@@ -1498,7 +1561,7 @@ class _LessonCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Время + тип + подгруппа + номер пары
+                  // Время + тип занятия справа
                   Row(
                     children: [
                       Text(
@@ -1508,23 +1571,34 @@ class _LessonCard extends StatelessWidget {
                           color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      _TypeChip(
-                        label: lesson.typeLabel,
-                        color: chipColor,
-                        isDark: isDark,
-                      ),
                       if (hasSubgroup) ...[
-                        const SizedBox(width: 6),
-                        _TypeChip(
-                          label:
-                              'Подгр. ${lesson.subgroup![lesson.subgroup!.length - 1]}',
+                        const SizedBox(width: 8),
+                        _SubgroupBadge(
+                          label: lesson.subgroup![lesson.subgroup!.length - 1],
                           color: chipColor,
                           isDark: isDark,
                         ),
                       ],
                       const Spacer(),
-                      if (pairNumber != null)
+                      // Тип занятия — справа
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: chipColor.withValues(alpha: isDark ? 0.18 : 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          lesson.typeLabel,
+                          style: TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                            color: chipColor,
+                            letterSpacing: 0.3,
+                          ),
+                        ),
+                      ),
+                      if (pairNumber != null) ...[
+                        const SizedBox(width: 6),
                         Container(
                           width: 24,
                           height: 24,
@@ -1555,9 +1629,10 @@ class _LessonCard extends StatelessWidget {
                             ),
                           ),
                         ),
+                      ],
                     ],
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     lesson.subject,
                     style: theme.textTheme.titleSmall
@@ -1599,15 +1674,28 @@ class _LessonMeta extends StatelessWidget {
               text: lesson.teacher!,
               color: color,
               theme: theme),
-        if (type != ScheduleType.group)
-          _MetaItem(
-              icon: Icons.group_outlined,
-              text: lesson.group ??
-                  lesson.subgroup ??
-                  lesson.stream ??
-                  '',
-              color: color,
-              theme: theme),
+        if (type != ScheduleType.group) ...[
+          if (lesson.group != null && lesson.group!.isNotEmpty)
+            _MetaItem(
+                icon: Icons.group_outlined,
+                text: lesson.subgroup != null && lesson.subgroup!.isNotEmpty
+                    ? '${lesson.group}/${lesson.subgroup![lesson.subgroup!.length - 1]}'
+                    : lesson.group!,
+                color: color,
+                theme: theme)
+          else if (lesson.subgroup != null && lesson.subgroup!.isNotEmpty)
+            _MetaItem(
+                icon: Icons.group_outlined,
+                text: lesson.subgroup!,
+                color: color,
+                theme: theme)
+          else if (lesson.stream != null && lesson.stream!.isNotEmpty)
+            _MetaItem(
+                icon: Icons.group_outlined,
+                text: lesson.stream!,
+                color: color,
+                theme: theme),
+        ],
         if (type != ScheduleType.audience &&
             lesson.room?.isNotEmpty == true)
           _MetaItem(
@@ -1657,30 +1745,35 @@ class _MetaItem extends StatelessWidget {
   }
 }
 
-class _TypeChip extends StatelessWidget {
-  final String label;
+/// Компактный бейдж номера подгруппы.
+class _SubgroupBadge extends StatelessWidget {
+  final String label;  // обычно '1' или '2'
   final Color color;
   final bool isDark;
 
-  const _TypeChip(
+  const _SubgroupBadge(
       {required this.label, required this.color, required this.isDark});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      width: 20,
+      height: 20,
       decoration: BoxDecoration(
         color: color.withValues(alpha: isDark ? 0.18 : 0.12),
-        borderRadius: BorderRadius.circular(999),
+        shape: BoxShape.circle,
         border: Border.all(
-            color: color.withValues(alpha: isDark ? 0.35 : 0.25), width: 0.8),
+            color: color.withValues(alpha: isDark ? 0.45 : 0.3), width: 1),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
+      child: Center(
+        child: Text(
+          label,
+          style: TextStyle(
             fontSize: 11,
-            fontWeight: FontWeight.w600,
-            color: color.withValues(alpha: isDark ? 0.9 : 1.0)),
+            fontWeight: FontWeight.w800,
+            color: color,
+          ),
+        ),
       ),
     );
   }
@@ -1699,10 +1792,14 @@ class _LessonDetailsSheet extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+    final typeColor = _lessonTypeChipColor(lesson.type, isDark);
     final buildingInfo = BuildingData.findByAuditorium(lesson.room);
+    final hasSubgroup = lesson.subgroup != null && lesson.subgroup!.isNotEmpty;
 
     Widget sheetContent = Container(
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
       decoration: BoxDecoration(
         color: isDark ? null : theme.cardColor,
         gradient: isDark
@@ -1747,26 +1844,152 @@ class _LessonDetailsSheet extends StatelessWidget {
             child: Container(
               width: 36,
               height: 4,
-              margin: const EdgeInsets.only(bottom: 20),
+              margin: const EdgeInsets.only(bottom: 16),
               decoration: BoxDecoration(
                 color: theme.dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
           ),
+
+          // Название предмета
           Text(
             lesson.subject,
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
-              color: theme.colorScheme.primary,
+              color: primary,
             ),
           ),
           const SizedBox(height: 20),
-          _DetailRow(
-              icon: Icons.access_time_rounded,
-              iconColor: theme.colorScheme.primary,
-              label: 'Время',
-              value: '${lesson.timeStart} – ${lesson.timeEnd}'),
+
+          // Время + Аудитория — две карточки рядом
+          Row(
+            children: [
+              // Карточка времени
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        primary.withValues(alpha: isDark ? 0.1 : 0.06),
+                        primary.withValues(alpha: isDark ? 0.05 : 0.02),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: primary.withValues(alpha: isDark ? 0.15 : 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: primary.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.access_time_rounded, color: primary, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              '${lesson.timeStart} – ${lesson.timeEnd}',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: onSurface,
+                                letterSpacing: 0.2,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${_durationMinutes(lesson.timeStart, lesson.timeEnd)} мин',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: onSurface.withValues(alpha: 0.5),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Карточка аудитории
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        AppColors.error.withValues(alpha: isDark ? 0.1 : 0.06),
+                        AppColors.error.withValues(alpha: isDark ? 0.04 : 0.02),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: AppColors.error.withValues(alpha: isDark ? 0.15 : 0.1),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 40,
+                        height: 40,
+                        decoration: BoxDecoration(
+                          color: AppColors.error.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 20),
+                      ),
+                      const SizedBox(width: 10),
+                      Flexible(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              lesson.room ?? '—',
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: onSurface,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            if (lesson.building != null && lesson.building!.isNotEmpty)
+                              Text(
+                                lesson.building!,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: onSurface.withValues(alpha: 0.5),
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Детали
           _DetailRow(
               icon: Icons.person_rounded,
               iconColor: AppColors.success,
@@ -1774,51 +1997,31 @@ class _LessonDetailsSheet extends StatelessWidget {
               value: lesson.teacher ?? '—'),
           _DetailRow(
               icon: Icons.group_rounded,
-              iconColor: theme.colorScheme.primary,
+              iconColor: primary,
               label: 'Группа',
-              value: lesson.group ??
-                  lesson.subgroup ??
-                  lesson.stream ??
-                  '—'),
-          _DetailRow(
-              icon: Icons.location_on_rounded,
-              iconColor: AppColors.error,
-              label: 'Аудитория',
-              value: [lesson.room, lesson.building]
-                  .where((s) => s != null && s.isNotEmpty)
-                  .join(', ')),
+              value: () {
+                String groupStr = '';
+                if (lesson.group != null && lesson.group!.isNotEmpty) {
+                  groupStr = lesson.group!;
+                  if (hasSubgroup) {
+                    groupStr += '/${lesson.subgroup![lesson.subgroup!.length - 1]}';
+                  }
+                } else if (hasSubgroup) {
+                  groupStr = lesson.subgroup!;
+                }
+                if (lesson.stream != null && lesson.stream!.isNotEmpty) {
+                  groupStr = groupStr.isEmpty
+                      ? lesson.stream!
+                      : '$groupStr • ${lesson.stream!}';
+                }
+                return groupStr.isEmpty ? '—' : groupStr;
+              }()),
           if (buildingInfo != null) ...[
-            Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                        color: theme.colorScheme.primary.withValues(alpha: 0.12),
-                        shape: BoxShape.circle),
-                    child: Icon(Icons.apartment_rounded,
-                        color: theme.colorScheme.primary, size: 18),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('Корпус',
-                            style: theme.textTheme.bodySmall?.copyWith(
-                                color: theme.colorScheme.onSurfaceVariant)),
-                        Text('${buildingInfo.name} — ${buildingInfo.address}',
-                            style: theme.textTheme.titleSmall
-                                ?.copyWith(fontWeight: FontWeight.w600)),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
+            _DetailRow(
+                icon: Icons.apartment_rounded,
+                iconColor: primary,
+                label: 'Корпус',
+                value: '${buildingInfo.name} — ${buildingInfo.address}'),
             const SizedBox(height: 4),
             SizedBox(
               width: double.infinity,
@@ -1828,7 +2031,7 @@ class _LessonDetailsSheet extends StatelessWidget {
                 icon: const Icon(Icons.map_rounded, size: 20),
                 label: const Text('Показать на карте'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
+                  backgroundColor: primary,
                   foregroundColor: theme.colorScheme.onPrimary,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14),
@@ -1856,6 +2059,18 @@ class _LessonDetailsSheet extends StatelessWidget {
       );
     }
     return sheetContent;
+  }
+
+  static int _durationMinutes(String start, String end) {
+    try {
+      final sp = start.split(':');
+      final ep = end.split(':');
+      final startMin = int.parse(sp[0]) * 60 + int.parse(sp[1]);
+      final endMin = int.parse(ep[0]) * 60 + int.parse(ep[1]);
+      return endMin - startMin;
+    } catch (_) {
+      return 90;
+    }
   }
 
   void _openMapChooser(BuildContext context, BuildingInfo info) {

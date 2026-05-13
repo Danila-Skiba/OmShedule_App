@@ -11,6 +11,7 @@ import 'screens/profile_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/lecture_notes_screen.dart';
+import 'screens/auth_screen.dart';
 
 /// Плавный переход между вкладками (fade).
 CustomTransitionPage<void> _fadePage(Widget child, GoRouterState state) {
@@ -132,6 +133,11 @@ final GoRouter appRouter = GoRouter(
       path: '/settings',
       pageBuilder: (context, state) =>
           _fadePage(const SettingsScreen(), state),
+    ),
+    GoRoute(
+      path: '/auth',
+      pageBuilder: (context, state) =>
+          _fadePage(const AuthScreen(), state),
     ),
   ],
 );

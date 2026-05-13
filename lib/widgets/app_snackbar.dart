@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 /// Красивый кастомный SnackBar для всего приложения.
+/// Использует акцентный цвет из темы, без тени, без анимации выезда снизу.
 class AppSnackBar {
   AppSnackBar._();
 
@@ -14,15 +15,15 @@ class AppSnackBar {
     ScaffoldMessenger.of(context).hideCurrentSnackBar();
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+
+    // Фон — плотный, хорошо видимый
+    final accentColor = isError ? theme.colorScheme.error : primary;
     final bgColor = isDark
-        ? const Color(0xFF2A2A2E)
-        : Colors.white;
-    final borderColor = isError
-        ? theme.colorScheme.error.withValues(alpha: 0.4)
-        : theme.colorScheme.primary.withValues(alpha: 0.2);
-    final iconColor = isError
-        ? theme.colorScheme.error
-        : theme.colorScheme.primary;
+        ? Color.alphaBlend(accentColor.withValues(alpha: 0.25), const Color(0xFF252528))
+        : Color.alphaBlend(accentColor.withValues(alpha: 0.12), const Color(0xFFFAFAFA));
+    final borderColor = accentColor.withValues(alpha: isDark ? 0.6 : 0.4);
+    final iconColor = accentColor;
     final textColor = isDark
         ? Colors.white
         : theme.colorScheme.onSurface;
@@ -36,7 +37,7 @@ class AppSnackBar {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: iconColor.withValues(alpha: 0.12),
+                  color: iconColor.withValues(alpha: 0.15),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 16, color: iconColor),
@@ -57,10 +58,10 @@ class AppSnackBar {
         ),
         backgroundColor: bgColor,
         behavior: SnackBarBehavior.floating,
-        elevation: isDark ? 2 : 6,
+        elevation: 8,
+        animation: _noSlideAnimation,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(14),
-          
           side: BorderSide(color: borderColor, width: 1),
         ),
         margin: const EdgeInsets.fromLTRB(16, 0, 16, 24),
@@ -70,6 +71,12 @@ class AppSnackBar {
       ),
     );
   }
+
+  /// Анимация без выезда снизу — просто fade in/out.
+  static final CurvedAnimation _noSlideAnimation = CurvedAnimation(
+    parent: const AlwaysStoppedAnimation(1.0),
+    curve: Curves.linear,
+  );
 
   /// Короткое уведомление об успехе.
   static void success(BuildContext context, String message) {

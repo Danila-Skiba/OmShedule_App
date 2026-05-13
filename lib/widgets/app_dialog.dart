@@ -6,6 +6,7 @@ class AppDialog extends StatelessWidget {
   final Color? iconColor;
   final String title;
   final String? message;
+  final Widget? content;
   final String confirmText;
   final String cancelText;
   final VoidCallback? onConfirm;
@@ -17,6 +18,7 @@ class AppDialog extends StatelessWidget {
     this.iconColor,
     required this.title,
     this.message,
+    this.content,
     this.confirmText = 'Подтвердить',
     this.cancelText = 'Отмена',
     this.onConfirm,
@@ -30,10 +32,12 @@ class AppDialog extends StatelessWidget {
     Color? iconColor,
     required String title,
     String? message,
+    Widget? content,
     String confirmText = 'Подтвердить',
     String cancelText = 'Отмена',
     VoidCallback? onConfirm,
     bool isDanger = false,
+    bool isDestructive = false,
   }) {
     return showDialog<bool>(
       context: context,
@@ -43,10 +47,11 @@ class AppDialog extends StatelessWidget {
         iconColor: iconColor,
         title: title,
         message: message,
+        content: content,
         confirmText: confirmText,
         cancelText: cancelText,
         onConfirm: onConfirm,
-        isDanger: isDanger,
+        isDanger: isDanger || isDestructive,
       ),
     );
   }
@@ -112,6 +117,12 @@ class AppDialog extends StatelessWidget {
                   height: 1.4,
                 ),
               ),
+            ],
+
+            // Произвольный контент (напр. TextField)
+            if (content != null) ...[
+              const SizedBox(height: 14),
+              content!,
             ],
 
             const SizedBox(height: 24),

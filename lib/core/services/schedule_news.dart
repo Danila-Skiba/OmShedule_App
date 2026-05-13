@@ -1,39 +1,44 @@
 import 'dart:convert';
-import 'package:http/http.dart' as http ;
+import 'package:http/http.dart' as http;
 import 'package:omstu_schedule/models/news.dart';
-
-const _host = '172.20.10.8'; //localhost
-// const _host = 'localhost';
+import '../api/api_config.dart';
 
 abstract class NewsRepository {
   Future<NewsLoadResult> getNews();
 }
 
 class NewsRepositoryImpl extends NewsRepository {
-
-  final String baseUrl = 'http://$_host:8000/api/news/';
-  final http.Client client; 
+  final http.Client client;
 
   NewsRepositoryImpl({http.Client? client}) : client = client ?? http.Client();
 
   @override
-
   Future<NewsLoadResult> getNews() async {
     try {
+      final url = Uri.parse('${ApiConfig.baseUrl}${ApiConfig.news}');
 
-      final url = Uri.parse(baseUrl);
-
-      final response = await client.get(url, headers: {'Content-Type': 'application/json; charset=utf-8',
-          'Accept': 'application/json',});
-      if (response.statusCode != 200){
+      final response = await client.get(url, headers: {
+        'Content-Type': 'application/json; charset=utf-8',
+        'Accept': 'application/json',
+      });
+      if (response.statusCode != 200) {
         throw Exception('Failed to load news');
       }
       final List<dynamic> json = jsonDecode(response.body) as List<dynamic>;
 
-      final news = json.map((n)=>News.fromJson(n)).toList();
+      final news = json.map((n) => News.fromJson(n)).toList();
 
-      return NewsLoadResult(news:   news);
+      // Сортируем по дате (убывание — новые сверху)
+      news.sort((a, b) {
+        final da = a.parsedDate;
+        final db = b.parsedDate;
+        if (da == null && db == null) return 0;
+        if (da == null) return 1;
+        if (db == null) return -1;
+        return db.compareTo(da);
+      });
 
+      return NewsLoadResult(news: news);
     } catch (e) {
       return NewsLoadResult(
         news: [],
@@ -41,6 +46,10 @@ class NewsRepositoryImpl extends NewsRepository {
       );
     }
   }
+
+  /// URL изображения новости.
+  static String imageUrl(String newsId) =>
+      '${ApiConfig.baseUrl}${ApiConfig.newsImage(newsId)}';
 }
 
 class NewsLoadResult {

@@ -2,8 +2,10 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../core/services/task_service.dart';
+import '../core/services/auth_service.dart';
 import '../widgets/base_container.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_snackbar.dart';
@@ -110,61 +112,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       body: CustomScrollView(
         slivers: [
-          // SliverToBoxAdapter(
-          //   child: Container(
-          //     width: double.infinity,
-          //     padding: const EdgeInsets.all(24),
-          //     child: Row(
-          //       children: [
-          //         CircleAvatar(
-          //           radius: 40,
-          //           backgroundColor: theme.colorScheme.primaryContainer,
-          //           child: Icon(
-          //             Icons.person_rounded,
-          //             size: 40,
-          //             color: theme.colorScheme.onPrimaryContainer,
-          //           ),
-          //         ),
-          //         const SizedBox(width: 16),
-          //         Expanded(
-          //           child: Column(
-          //             crossAxisAlignment: CrossAxisAlignment.start,
-          //             children: [
-          //               Text(
-          //                 'Иван Петров',
-          //                 style: theme.textTheme.titleLarge?.copyWith(
-          //                   fontWeight: FontWeight.bold,
-          //                   color: theme.colorScheme.onSurface,
-          //                 ),
-          //               ),
-          //               const SizedBox(height: 4),
-          //               Text(
-          //                 'ИУ5-31б',
-          //                 style: theme.textTheme.bodyMedium?.copyWith(
-          //                   color: theme.colorScheme.onSurfaceVariant,
-          //                 ),
-          //               ),
-          //               const SizedBox(height: 8),
-          //               Row(
-          //                 children: [
-          //                   Icon(Icons.emoji_events_rounded, size: 16, color: theme.colorScheme.tertiary),
-          //                   const SizedBox(width: 8),
-          //                   Text(
-          //                     'Активный студент',
-          //                     style: theme.textTheme.bodySmall?.copyWith(
-          //                       fontWeight: FontWeight.w600,
-          //                       color: theme.colorScheme.onSurfaceVariant,
-          //                     ),
-          //                   ),
-          //                 ],
-          //               ),
-          //             ],
-          //           ),
-          //         ),
-          //       ],
-          //     ),
-          //   ),
-          // ),
+          SliverToBoxAdapter(child: _buildAuthCard(theme)),
           SliverPadding(
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
@@ -179,6 +127,130 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAuthCard(ThemeData theme) {
+    final auth = context.watch<AuthService>();
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final onSurface = theme.colorScheme.onSurface;
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: BaseContainer(
+        isGlass: isDark,
+        padding: const EdgeInsets.all(16),
+        child: auth.isAuthenticated
+            ? Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: primary.withValues(alpha: 0.12),
+                    child: Text(
+                      (auth.user?.name ?? '?')[0].toUpperCase(),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        color: primary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          auth.user?.name ?? 'Пользователь',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                            color: onSurface,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          auth.user?.email ?? '',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Material(
+                    color: theme.colorScheme.error.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(10),
+                    child: InkWell(
+                      onTap: () async {
+                        final confirmed = await AppDialog.show(
+                          context: context,
+                          icon: Icons.logout_rounded,
+                          title: 'Выйти из аккаунта?',
+                          confirmText: 'Выйти',
+                          isDestructive: true,
+                        );
+                        if (confirmed == true && mounted) {
+                          await AuthService.instance.logout();
+                          if (mounted) AppSnackBar.success(context, 'Вы вышли из аккаунта');
+                        }
+                      },
+                      borderRadius: BorderRadius.circular(10),
+                      child: Padding(
+                        padding: const EdgeInsets.all(10),
+                        child: Icon(
+                          Icons.logout_rounded,
+                          size: 20,
+                          color: theme.colorScheme.error,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              )
+            : Row(
+                children: [
+                  CircleAvatar(
+                    radius: 24,
+                    backgroundColor: primary.withValues(alpha: 0.08),
+                    child: Icon(Icons.person_outline_rounded, size: 24, color: primary.withValues(alpha: 0.4)),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Вы не авторизованы',
+                          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: onSurface),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Войдите для доступа к конспектам',
+                          style: TextStyle(fontSize: 12, color: onSurface.withValues(alpha: 0.5)),
+                        ),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: 38,
+                    child: ElevatedButton(
+                      onPressed: () => context.push('/auth'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                        elevation: 0,
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
+                      ),
+                      child: const Text('Войти', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                    ),
+                  ),
+                ],
+              ),
       ),
     );
   }

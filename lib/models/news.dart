@@ -1,26 +1,41 @@
-/// Модель новости (из mockData.ts)
+/// Модель новости из API.
 class News {
   final String id;
   final String title;
   final String date;
-  final String url; 
-  // final String preview;
+  final String url;
+  final String? image;
 
   const News({
     required this.id,
     required this.title,
     required this.date,
     required this.url,
-    // required this.preview,
+    this.image,
   });
 
   factory News.fromJson(Map<String, dynamic> json) {
     return News(
-      id: json['id'] as String,
+      id: json['id'].toString(),
       title: json['title'] as String,
       date: json['date'] as String,
       url: json['url'] as String,
-      // preview: json['preview'] as String,
+      image: json['image']?.toString(),
     );
+  }
+
+  /// Парсинг даты для сортировки.
+  DateTime? get parsedDate {
+    try {
+      // Формат может быть "dd.MM.yyyy" или "yyyy-MM-dd"
+      if (date.contains('-')) return DateTime.parse(date);
+      final parts = date.split('.');
+      if (parts.length == 3) {
+        return DateTime(int.parse(parts[2]), int.parse(parts[1]), int.parse(parts[0]));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 }
