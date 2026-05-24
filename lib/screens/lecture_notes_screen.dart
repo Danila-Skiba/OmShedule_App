@@ -195,7 +195,7 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
       appBar: AppBar(title: const Text('Конспекты')),
       floatingActionButton: auth.isAuthenticated
           ? Padding(
-              padding: const EdgeInsets.only(bottom: 80),
+              padding: const EdgeInsets.only(bottom: 100),
               child: FloatingActionButton(
                 onPressed: _createNewSession,
                 backgroundColor: primary,

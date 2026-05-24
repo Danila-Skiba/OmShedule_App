@@ -5,6 +5,8 @@ enum LessonType {
   practice,
   personal,
   retake,
+  exam,
+  examPrep,
 }
 
 /// Статус занятия
@@ -63,6 +65,10 @@ class Lesson {
         return 'Личное';
       case LessonType.retake:
         return 'Пересдача';
+      case LessonType.exam:
+        return 'Экзамен';
+      case LessonType.examPrep:
+        return 'Подготовка к экзамену';
     }
   }
 
@@ -103,7 +109,9 @@ class Lesson {
       case '3':
         return LessonType.practice;
       case '4':
-        return LessonType.personal;
+        return LessonType.exam;
+      case '5':
+        return LessonType.examPrep;
       case '11':
         return LessonType.retake;
       default:

@@ -558,31 +558,7 @@ class _ChatBubble extends StatelessWidget {
               // Текст (с Markdown для ответов бота)
               if (message.text != null)
                 message.isMarkdown && !isUser
-                    ? MarkdownBody(
-                        data: _convertInlineMathToCode(message.text!),
-                        selectable: true,
-                        fitContent: true,
-                        builders: {
-                          'code': _ChatMathBuilder(textColor: textColor, isDark: isDark),
-                        },
-                        styleSheet: MarkdownStyleSheet(
-                          p: TextStyle(fontSize: 14, color: textColor, height: 1.4),
-                          strong: TextStyle(fontWeight: FontWeight.w700, color: textColor),
-                          em: TextStyle(fontStyle: FontStyle.italic, color: textColor),
-                          h1: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor),
-                          h2: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textColor),
-                          h3: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textColor),
-                          listBullet: TextStyle(fontSize: 14, color: textColor),
-                          code: TextStyle(
-                            fontSize: 12,
-                            fontFamily: 'monospace',
-                            color: textColor,
-                            backgroundColor: isDark
-                                ? Colors.white.withValues(alpha: 0.06)
-                                : Colors.black.withValues(alpha: 0.05),
-                          ),
-                        ),
-                      )
+                    ? _buildBotMessageWithMath(message.text!, textColor, isDark)
                     : Text(
                         message.text!,
                         style: TextStyle(
@@ -712,6 +688,107 @@ class _TypingIndicatorState extends State<_TypingIndicator>
 // ═══════════════════════════════════════════════════════════════════════════════
 // Конвертация инлайн-формул и Math builder для чата
 // ═══════════════════════════════════════════════════════════════════════════════
+
+/// Строит виджет сообщения бота с поддержкой блочных $$...$$ и инлайн $...$ формул.
+Widget _buildBotMessageWithMath(String text, Color textColor, bool isDark) {
+  // Разбиваем текст на блоки: обычный текст и блочные формулы $$...$$
+  final blocks = _parseChatBlocks(text);
+
+  if (blocks.length == 1 && !blocks.first.isMath) {
+    // Нет блочных формул — только инлайн
+    return MarkdownBody(
+      data: _convertInlineMathToCode(text),
+      selectable: true,
+      fitContent: true,
+      builders: {
+        'code': _ChatMathBuilder(textColor: textColor, isDark: isDark),
+      },
+      styleSheet: _chatMarkdownStyle(textColor, isDark),
+    );
+  }
+
+  // Есть блочные формулы — строим список виджетов
+  return Column(
+    crossAxisAlignment: CrossAxisAlignment.start,
+    mainAxisSize: MainAxisSize.min,
+    children: blocks.map((block) {
+      if (block.isMath) {
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Center(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Math.tex(
+                block.content.trim(),
+                textStyle: TextStyle(fontSize: 16, color: textColor),
+                mathStyle: MathStyle.display,
+              ),
+            ),
+          ),
+        );
+      } else {
+        final trimmed = block.content.trim();
+        if (trimmed.isEmpty) return const SizedBox.shrink();
+        return MarkdownBody(
+          data: _convertInlineMathToCode(trimmed),
+          selectable: true,
+          fitContent: true,
+          builders: {
+            'code': _ChatMathBuilder(textColor: textColor, isDark: isDark),
+          },
+          styleSheet: _chatMarkdownStyle(textColor, isDark),
+        );
+      }
+    }).toList(),
+  );
+}
+
+/// Парсит текст на блоки: текстовые и математические ($$...$$).
+List<_ContentBlock> _parseChatBlocks(String input) {
+  final blocks = <_ContentBlock>[];
+  final regex = RegExp(r'\$\$([\s\S]*?)\$\$');
+  int lastEnd = 0;
+
+  for (final match in regex.allMatches(input)) {
+    if (match.start > lastEnd) {
+      blocks.add(_ContentBlock(input.substring(lastEnd, match.start), false));
+    }
+    blocks.add(_ContentBlock(match.group(1)!, true));
+    lastEnd = match.end;
+  }
+
+  if (lastEnd < input.length) {
+    blocks.add(_ContentBlock(input.substring(lastEnd), false));
+  }
+
+  return blocks;
+}
+
+class _ContentBlock {
+  final String content;
+  final bool isMath;
+  const _ContentBlock(this.content, this.isMath);
+}
+
+MarkdownStyleSheet _chatMarkdownStyle(Color textColor, bool isDark) {
+  return MarkdownStyleSheet(
+    p: TextStyle(fontSize: 14, color: textColor, height: 1.4),
+    strong: TextStyle(fontWeight: FontWeight.w700, color: textColor),
+    em: TextStyle(fontStyle: FontStyle.italic, color: textColor),
+    h1: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: textColor),
+    h2: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: textColor),
+    h3: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: textColor),
+    listBullet: TextStyle(fontSize: 14, color: textColor),
+    code: TextStyle(
+      fontSize: 12,
+      fontFamily: 'monospace',
+      color: textColor,
+      backgroundColor: isDark
+          ? Colors.white.withValues(alpha: 0.06)
+          : Colors.black.withValues(alpha: 0.05),
+    ),
+  );
+}
 
 /// Конвертирует инлайн-формулы $...$ в backtick-code `...` для обработки Math builder.
 String _convertInlineMathToCode(String input) {

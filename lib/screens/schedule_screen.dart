@@ -1387,6 +1387,10 @@ Color _lessonTypeChipColor(LessonType type, bool isDark) {
       return isDark ? const Color(0xFF4ED9A0) : const Color(0xFF3EA87C);
     case LessonType.personal:
       return isDark ? const Color(0xFFA98BFA) : const Color(0xFF8B6FD4);
+    case LessonType.exam:
+      return isDark ? const Color(0xFFFF7A7A) : const Color(0xFFD94444);
+    case LessonType.examPrep:
+      return isDark ? const Color(0xFFFFB86A) : const Color(0xFFD9882E);
   }
 }
 
@@ -1564,19 +1568,34 @@ class _LessonCard extends StatelessWidget {
                   // Время + тип занятия справа
                   Row(
                     children: [
-                      Text(
-                        '${lesson.timeStart} – ${lesson.timeEnd}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      Flexible(
+                        child: Text(
+                          '${lesson.timeStart} – ${lesson.timeEnd}',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                          ),
+                          overflow: TextOverflow.ellipsis,
+                          maxLines: 1,
                         ),
                       ),
                       if (hasSubgroup) ...[
                         const SizedBox(width: 8),
-                        _SubgroupBadge(
-                          label: lesson.subgroup![lesson.subgroup!.length - 1],
-                          color: chipColor,
-                          isDark: isDark,
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.people_outline_rounded,
+                              size: 13,
+                              color: chipColor.withValues(alpha: 0.7),
+                            ),
+                            const SizedBox(width: 3),
+                            _SubgroupBadge(
+                              label: lesson.subgroup![lesson.subgroup!.length - 1],
+                              color: chipColor,
+                              isDark: isDark,
+                            ),
+                          ],
                         ),
                       ],
                       const Spacer(),
@@ -1632,7 +1651,7 @@ class _LessonCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
                     lesson.subject,
                     style: theme.textTheme.titleSmall
@@ -1640,7 +1659,7 @@ class _LessonCard extends StatelessWidget {
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   _LessonMeta(lesson: lesson, type: type, theme: theme),
                 ],
               ),
@@ -1663,47 +1682,66 @@ class _LessonMeta extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = theme.colorScheme.onSurface.withValues(alpha: 0.6);
-    return Wrap(
-      spacing: 12,
-      runSpacing: 4,
-      children: [
-        if (type != ScheduleType.teacher &&
-            lesson.teacher?.isNotEmpty == true)
-          _MetaItem(
-              icon: Icons.person_outline_rounded,
-              text: lesson.teacher!,
-              color: color,
-              theme: theme),
-        if (type != ScheduleType.group) ...[
-          if (lesson.group != null && lesson.group!.isNotEmpty)
-            _MetaItem(
-                icon: Icons.group_outlined,
-                text: lesson.subgroup != null && lesson.subgroup!.isNotEmpty
-                    ? '${lesson.group}/${lesson.subgroup![lesson.subgroup!.length - 1]}'
-                    : lesson.group!,
-                color: color,
-                theme: theme)
-          else if (lesson.subgroup != null && lesson.subgroup!.isNotEmpty)
-            _MetaItem(
-                icon: Icons.group_outlined,
-                text: lesson.subgroup!,
-                color: color,
-                theme: theme)
-          else if (lesson.stream != null && lesson.stream!.isNotEmpty)
-            _MetaItem(
-                icon: Icons.group_outlined,
-                text: lesson.stream!,
-                color: color,
-                theme: theme),
-        ],
-        if (type != ScheduleType.audience &&
-            lesson.room?.isNotEmpty == true)
-          _MetaItem(
-              icon: Icons.location_on_outlined,
-              text: lesson.room!,
-              color: color,
-              theme: theme),
-      ],
+    final items = <Widget>[];
+
+    if (type != ScheduleType.teacher &&
+        lesson.teacher?.isNotEmpty == true) {
+      items.add(_MetaItem(
+          icon: Icons.person_outline_rounded,
+          text: lesson.teacher!,
+          color: color,
+          theme: theme));
+    }
+    if (type != ScheduleType.group) {
+      if (lesson.group != null && lesson.group!.isNotEmpty) {
+        items.add(_MetaItem(
+            icon: Icons.group_outlined,
+            text: lesson.subgroup != null && lesson.subgroup!.isNotEmpty
+                ? '${lesson.group}/${lesson.subgroup![lesson.subgroup!.length - 1]}'
+                : lesson.group!,
+            color: color,
+            theme: theme));
+      } else if (lesson.subgroup != null && lesson.subgroup!.isNotEmpty) {
+        items.add(_MetaItem(
+            icon: Icons.group_outlined,
+            text: lesson.subgroup!,
+            color: color,
+            theme: theme));
+      } else if (lesson.stream != null && lesson.stream!.isNotEmpty) {
+        items.add(_MetaItem(
+            icon: Icons.group_outlined,
+            text: lesson.stream!,
+            color: color,
+            theme: theme));
+      }
+    }
+    if (type != ScheduleType.audience &&
+        lesson.room?.isNotEmpty == true) {
+      items.add(_MetaItem(
+          icon: Icons.location_on_outlined,
+          text: lesson.room!,
+          color: color,
+          theme: theme));
+    }
+
+    if (items.isEmpty) return const SizedBox.shrink();
+
+    // Строим строку мета-информации с разделителями
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Row(
+          children: [
+            for (int i = 0; i < items.length; i++) ...[
+              if (i > 0)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4),
+                  child: Text('•', style: TextStyle(fontSize: 10, color: color)),
+                ),
+              Flexible(child: items[i]),
+            ],
+          ],
+        );
+      },
     );
   }
 }
@@ -1722,25 +1760,22 @@ class _MetaItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ConstrainedBox(
-      constraints: const BoxConstraints(maxWidth: 180),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 4),
-          Flexible(
-            child: Text(
-              text,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: 14, color: color),
+        const SizedBox(width: 4),
+        Flexible(
+          child: Text(
+            text,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.75),
             ),
+            overflow: TextOverflow.ellipsis,
+            maxLines: 1,
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -2302,7 +2337,9 @@ class _DetailRow extends StatelessWidget {
                         color: theme.colorScheme.onSurfaceVariant)),
                 Text(value,
                     style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
               ],
             ),
           ),

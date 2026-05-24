@@ -123,6 +123,25 @@ class AuthService extends ChangeNotifier {
     }
   }
 
+  /// Авторизация по готовому токену (например, от Telegram).
+  Future<String?> loginWithToken(String accessToken) async {
+    try {
+      _token = accessToken;
+      final valid = await _validateRemote();
+      if (!valid) {
+        _token = null;
+        return 'Невалидный токен';
+      }
+      await _saveToken();
+      await _loadProfile();
+      notifyListeners();
+      return null; // успех
+    } catch (e) {
+      _token = null;
+      return 'Ошибка: $e';
+    }
+  }
+
   /// Выход.
   Future<void> logout() async {
     await _clearToken();

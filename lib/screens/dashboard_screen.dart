@@ -121,6 +121,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
         case 'audience':
           roomIds = SettingsService.getLastAudienceId();
           break;
+        case 'personal':
+          // Даже если фильтр «Личное», на дашборде показываем расписание сохранённой группы
+          groupIds = SettingsService.getLastGroupId();
+          break;
       }
     } catch (_) {}
 
@@ -1407,6 +1411,10 @@ Color _lessonTypeColor(LessonType type, bool isDark) {
       return isDark ? const Color(0xFF4ED9A0) : const Color(0xFF3EA87C);
     case LessonType.personal:
       return isDark ? const Color(0xFFA98BFA) : const Color(0xFF8B6FD4);
+    case LessonType.exam:
+      return isDark ? const Color(0xFFFF7A7A) : const Color(0xFFD94444);
+    case LessonType.examPrep:
+      return isDark ? const Color(0xFFFFB86A) : const Color(0xFFD9882E);
   }
 }
 
@@ -2132,7 +2140,9 @@ class _DashboardDetailRow extends StatelessWidget {
                         color: theme.colorScheme.onSurfaceVariant)),
                 Text(value,
                     style: theme.textTheme.titleSmall
-                        ?.copyWith(fontWeight: FontWeight.w600)),
+                        ?.copyWith(fontWeight: FontWeight.w600),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis),
               ],
             ),
           ),

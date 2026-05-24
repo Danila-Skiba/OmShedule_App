@@ -2,8 +2,8 @@
 class ApiConfig {
   ApiConfig._();
 
-
-  static const String host = 'localhost'
+//  '185.42.164.201'
+  static const String host = '192.168.31.29'
 ;
   static const int port = 8000;
   static const String baseUrl = 'http://$host:$port';
@@ -26,4 +26,8 @@ class ApiConfig {
   static String lectureSessionData(String id) => '/api/lectures/session/$id/data';
   static String lectureSessionCompile(String id) => '/api/lectures/session/$id/compile';
   static const String lectureSessionCreate = '/api/lectures/session';
+
+  // Telegram auth
+  static const String authTelegramInit = '/api/auth/telegram/init';
+  static const String authTelegramToken = '/api/auth/telegram/token';
 }
