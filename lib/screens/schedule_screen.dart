@@ -1568,37 +1568,28 @@ class _LessonCard extends StatelessWidget {
                   // Время + тип занятия справа
                   Row(
                     children: [
-                      Flexible(
-                        child: Text(
-                          '${lesson.timeStart} – ${lesson.timeEnd}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                      Text(
+                        '${lesson.timeStart} – ${lesson.timeEnd}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                         ),
                       ),
-                      if (hasSubgroup) ...[
-                        const SizedBox(width: 8),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(
-                              Icons.people_outline_rounded,
-                              size: 13,
-                              color: chipColor.withValues(alpha: 0.7),
-                            ),
-                            const SizedBox(width: 3),
-                            _SubgroupBadge(
-                              label: lesson.subgroup![lesson.subgroup!.length - 1],
-                              color: chipColor,
-                              isDark: isDark,
-                            ),
-                          ],
-                        ),
-                      ],
                       const Spacer(),
+                      if (hasSubgroup) ...[
+                        Icon(
+                          Icons.people_outline_rounded,
+                          size: 13,
+                          color: chipColor.withValues(alpha: 0.7),
+                        ),
+                        const SizedBox(width: 3),
+                        _SubgroupBadge(
+                          label: lesson.subgroup![lesson.subgroup!.length - 1],
+                          color: chipColor,
+                          isDark: isDark,
+                        ),
+                        const SizedBox(width: 8),
+                      ],
                       // Тип занятия — справа
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),

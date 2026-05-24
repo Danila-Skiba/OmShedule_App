@@ -1,4 +1,3 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../core/services/task_service.dart';
@@ -6,7 +5,6 @@ import '../models/personal_task.dart';
 import '../widgets/app_snackbar.dart';
 
 /// Полноценная страница добавления / редактирования личной задачи.
-/// Поля: Название, Время (CupertinoPicker), Описание.
 class AddTaskScreen extends StatefulWidget {
   final DateTime forDate;
   final VoidCallback onSaved;
@@ -208,26 +206,66 @@ class _AddTaskScreenState extends State<AddTaskScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            Container(
-              height: 180,
-              decoration: BoxDecoration(
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.04)
-                    : Colors.grey.withValues(alpha: 0.04),
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: CupertinoTimerPicker(
-                mode: CupertinoTimerPickerMode.hm,
-                initialTimerDuration: Duration(
-                  hours: _selectedHour,
-                  minutes: _selectedMinute,
-                ),
-                onTimerDurationChanged: (Duration duration) {
+            GestureDetector(
+              onTap: () async {
+                final picked = await showTimePicker(
+                  context: context,
+                  initialTime: TimeOfDay(
+                    hour: _selectedHour,
+                    minute: _selectedMinute,
+                  ),
+                  builder: (context, child) {
+                    return MediaQuery(
+                      data: MediaQuery.of(context).copyWith(
+                        alwaysUse24HourFormat: true,
+                      ),
+                      child: child!,
+                    );
+                  },
+                );
+                if (picked != null) {
                   setState(() {
-                    _selectedHour = duration.inHours;
-                    _selectedMinute = duration.inMinutes % 60;
+                    _selectedHour = picked.hour;
+                    _selectedMinute = picked.minute;
                   });
-                },
+                }
+              },
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? Colors.white.withValues(alpha: 0.06)
+                      : Colors.grey.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.1)
+                        : theme.colorScheme.primary.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.access_time_rounded,
+                      size: 20,
+                      color: theme.colorScheme.primary,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      _formattedTime,
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const Spacer(),
+                    Icon(
+                      Icons.edit_rounded,
+                      size: 18,
+                      color: theme.colorScheme.onSurface.withValues(alpha: 0.35),
+                    ),
+                  ],
+                ),
               ),
             ),
 

@@ -117,8 +117,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _buildStatistics(completionRate),
-                const SizedBox(height: 16),
                 _buildTasksSection(completedTasks, totalTasks, completionRate),
                 const SizedBox(height: 16),
                 // _buildAchievements(),
@@ -252,78 +250,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 ],
               ),
       ),
-    );
-  }
-
-  Widget _buildStatistics(int completionRate) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final onSurf = theme.colorScheme.onSurface;
-    final onSurfVar = theme.colorScheme.onSurfaceVariant;
-    final primary = theme.colorScheme.primary;
-    return Row(
-      children: [
-        Expanded(
-          child: BaseContainer(
-            isGlass: isDark,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Посещаемость', style: theme.textTheme.bodyMedium?.copyWith(color: onSurfVar)),
-                    const Icon(Icons.trending_up_rounded, color: AppColors.success, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text('78%', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: primary)),
-                const SizedBox(height: 8),
-                const AppProgress(value: 78, height: 8),
-                const SizedBox(height: 8),
-                Text('За неделю', style: theme.textTheme.bodySmall?.copyWith(color: onSurfVar)),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: BaseContainer(
-            isGlass: isDark,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Активность', style: theme.textTheme.bodyMedium?.copyWith(color: onSurfVar)),
-                    Icon(Icons.calendar_today_rounded, color: theme.colorScheme.secondary, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text('4.2', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: primary)),
-                const SizedBox(height: 8),
-                Row(
-                  children: List.generate(5, (i) => Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 2),
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: i < 4 ? theme.colorScheme.primary : theme.dividerColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  )),
-                ),
-                const SizedBox(height: 8),
-                Text('За месяц', style: theme.textTheme.bodySmall?.copyWith(color: onSurfVar)),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 

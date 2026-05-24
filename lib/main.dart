@@ -40,7 +40,9 @@ class OmstuScheduleApp extends StatelessWidget {
       ],
       child: Consumer<ThemeNotifier>(
         builder: (context, themeNotifier, _) {
-          return MaterialApp.router(
+          return GestureDetector(
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            child: MaterialApp.router(
             title: 'Расписание ОмГТУ',
             debugShowCheckedModeBanner: false,
             localizationsDelegates: const [
@@ -56,6 +58,7 @@ class OmstuScheduleApp extends StatelessWidget {
             darkTheme: themeNotifier.darkTheme(),
             themeMode: themeNotifier.themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light,
             routerConfig: appRouter,
+          ),
           );
         },
       ),
