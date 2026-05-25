@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -12,6 +13,7 @@ import '../core/services/settings_service.dart';
 import '../core/services/task_service.dart';
 import '../core/state/filter_controller.dart';
 import '../core/state/schedule_week_controller.dart';
+import '../core/utils/platform_utils.dart';
 import '../data/building_data.dart';
 import '../models/lesson.dart';
 import '../models/personal_task.dart';
@@ -363,7 +365,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
               color: Theme.of(context)
                   .scaffoldBackgroundColor
                   .withValues(alpha: 0.65),
-              child: const Center(child: CircularProgressIndicator()),
+              child: Center(child: buildLoader()), // iOS
             ),
           if (_filterController.isPersonal)
             Positioned(
@@ -1281,13 +1283,20 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void _showLessonDetails(Lesson l) {
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _LessonDetailsSheet(lesson: l),
-    );
+    if (isIOS) { // iOS
+      showCupertinoModalPopup(
+        context: context,
+        builder: (_) => _LessonDetailsSheet(lesson: l),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _LessonDetailsSheet(lesson: l),
+      );
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -1322,13 +1331,11 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
       int.parse(dateParts[2]),
     );
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AddTaskScreen(
-          forDate: forDate,
-          onSaved: _loadTasks,
-          existingTask: task,
-        ),
-      ),
+      buildRoute(AddTaskScreen( // iOS
+        forDate: forDate,
+        onSaved: _loadTasks,
+        existingTask: task,
+      )),
     );
   }
 
@@ -1338,9 +1345,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         : _weekController.currentWeek
             .dates[_weekController.selectedDayIndex];
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AddTaskScreen(forDate: forDate, onSaved: _loadTasks),
-      ),
+      buildRoute(AddTaskScreen(forDate: forDate, onSaved: _loadTasks)), // iOS
     );
   }
 
@@ -1568,19 +1573,15 @@ class _LessonCard extends StatelessWidget {
                   // Время + тип занятия справа
                   Row(
                     children: [
-                      Flexible(
-                        child: Text(
-                          '${lesson.timeStart} – ${lesson.timeEnd}',
-                          style: theme.textTheme.bodySmall?.copyWith(
-                            fontWeight: FontWeight.w600,
-                            color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
-                          ),
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                      Text(
+                        '${lesson.timeStart} – ${lesson.timeEnd}',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
                         ),
                       ),
+                      const Spacer(),
                       if (hasSubgroup) ...[
-                        const SizedBox(width: 8),
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1597,8 +1598,8 @@ class _LessonCard extends StatelessWidget {
                             ),
                           ],
                         ),
+                        const SizedBox(width: 8),
                       ],
-                      const Spacer(),
                       // Тип занятия — справа
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -2058,26 +2059,41 @@ class _LessonDetailsSheet extends StatelessWidget {
                 label: 'Корпус',
                 value: '${buildingInfo.name} — ${buildingInfo.address}'),
             const SizedBox(height: 4),
-            SizedBox(
+            SizedBox( // iOS
               width: double.infinity,
               height: 48,
-              child: ElevatedButton.icon(
-                onPressed: () => _openMapChooser(context, buildingInfo),
-                icon: const Icon(Icons.map_rounded, size: 20),
-                label: const Text('Показать на карте'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                  textStyle: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              child: isIOS
+                  ? CupertinoButton(
+                      onPressed: () => _openMapChooser(context, buildingInfo),
+                      color: primary,
+                      borderRadius: BorderRadius.circular(14),
+                      padding: EdgeInsets.zero,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.map_rounded, size: 20, color: CupertinoColors.white),
+                          SizedBox(width: 8),
+                          Text('Показать на карте', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                        ],
+                      ),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: () => _openMapChooser(context, buildingInfo),
+                      icon: const Icon(Icons.map_rounded, size: 20),
+                      label: const Text('Показать на карте'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                        textStyle: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
             ),
           ],
         ],
@@ -2109,6 +2125,38 @@ class _LessonDetailsSheet extends StatelessWidget {
   }
 
   void _openMapChooser(BuildContext context, BuildingInfo info) {
+    // iOS — CupertinoActionSheet
+    if (isIOS) {
+      showCupertinoModalPopup(
+        context: context,
+        builder: (ctx) => CupertinoActionSheet(
+          title: const Text('Показать на карте'),
+          message: Text(info.address),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _openIn2GIS(info);
+              },
+              child: const Text('2ГИС'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _openInYandexMaps(info);
+              },
+              child: const Text('Яндекс Карты'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+        ),
+      );
+      return;
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     showModalBottomSheet(

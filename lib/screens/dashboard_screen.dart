@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omstu_schedule/core/services/schedule_news.dart';
@@ -17,6 +18,7 @@ import '../core/services/settings_service.dart';
 import '../core/services/schedule_cache_service.dart';
 import '../core/services/schedule_repository.dart';
 import '../core/services/task_service.dart';
+import '../core/utils/platform_utils.dart';
 import '../core/utils/week_service.dart';
 
 const _monthNames = [
@@ -608,13 +610,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Показать BottomSheet с деталями пары (как на странице расписания).
   void _showLessonDetailsFromDashboard(Lesson lesson) {
-    showModalBottomSheet(
-      context: context,
-      useRootNavigator: true,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (_) => _DashboardLessonSheet(lesson: lesson),
-    );
+    if (isIOS) { // iOS
+      showCupertinoModalPopup(
+        context: context,
+        builder: (_) => _DashboardLessonSheet(lesson: lesson),
+      );
+    } else {
+      showModalBottomSheet(
+        context: context,
+        useRootNavigator: true,
+        isScrollControlled: true,
+        backgroundColor: Colors.transparent,
+        builder: (_) => _DashboardLessonSheet(lesson: lesson),
+      );
+    }
   }
 
   /// Группирует пары по временному слоту и возвращает виджеты.
@@ -743,18 +752,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             const SizedBox(height: 16),
 
-            if (_scheduleLoading)
+            if (_scheduleLoading) // iOS
               Center(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: SizedBox(
-                    width: 24,
-                    height: 24,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2.2,
-                      color: primary,
-                    ),
-                  ),
+                  child: buildLoader(radius: 12, strokeWidth: 2.2, color: primary),
                 ),
               )
             else if (!hasContent)
@@ -1277,15 +1279,8 @@ class _NewsCard extends StatelessWidget {
                         if (loadingProgress == null) return child;
                         return Container(
                           color: primary.withValues(alpha: isDark ? 0.08 : 0.06),
-                          child: Center(
-                            child: SizedBox(
-                              width: 24,
-                              height: 24,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.2,
-                                color: primary,
-                              ),
-                            ),
+                          child: Center( // iOS
+                            child: buildLoader(radius: 12, strokeWidth: 2.2, color: primary),
                           ),
                         );
                       },
@@ -1937,23 +1932,38 @@ class _DashboardLessonSheet extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: 48,
-              child: ElevatedButton.icon(
-                onPressed: () => _openMapChooser(context, buildingInfo),
-                icon: const Icon(Icons.map_rounded, size: 20),
-                label: const Text('Показать на карте'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
-                  ),
-                  elevation: 0,
-                  textStyle: const TextStyle(
-                    fontSize: 15,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ),
+              child: isIOS // iOS
+                  ? CupertinoButton(
+                      onPressed: () => _openMapChooser(context, buildingInfo),
+                      color: primary,
+                      borderRadius: BorderRadius.circular(14),
+                      padding: EdgeInsets.zero,
+                      child: const Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(Icons.map_rounded, size: 20, color: CupertinoColors.white),
+                          SizedBox(width: 8),
+                          Text('Показать на карте', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                        ],
+                      ),
+                    )
+                  : ElevatedButton.icon(
+                      onPressed: () => _openMapChooser(context, buildingInfo),
+                      icon: const Icon(Icons.map_rounded, size: 20),
+                      label: const Text('Показать на карте'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        elevation: 0,
+                        textStyle: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
             ),
           ],
         ],
@@ -1985,6 +1995,38 @@ class _DashboardLessonSheet extends StatelessWidget {
   }
 
   void _openMapChooser(BuildContext context, BuildingInfo info) {
+    // iOS — CupertinoActionSheet
+    if (isIOS) {
+      showCupertinoModalPopup(
+        context: context,
+        builder: (ctx) => CupertinoActionSheet(
+          title: const Text('Показать на карте'),
+          message: Text(info.address),
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _openIn2GIS(info);
+              },
+              child: const Text('2ГИС'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                _openInYandexMaps(info);
+              },
+              child: const Text('Яндекс Карты'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+        ),
+      );
+      return;
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     showModalBottomSheet(

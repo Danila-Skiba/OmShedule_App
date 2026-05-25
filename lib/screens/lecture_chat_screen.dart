@@ -1,10 +1,12 @@
 import 'dart:io';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_math_fork/flutter_math.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:markdown/markdown.dart' as md;
 import '../core/services/lecture_api_service.dart';
+import '../core/utils/platform_utils.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_snackbar.dart';
 import 'markdown_viewer_screen.dart';
@@ -135,6 +137,35 @@ class _LectureChatScreenState extends State<LectureChatScreen> {
   }
 
   void _showPickerOptions() {
+    if (isIOS) { // iOS
+      showCupertinoModalPopup(
+        context: context,
+        builder: (ctx) => CupertinoActionSheet(
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _pickPhoto(ImageSource.camera);
+              },
+              child: const Text('Камера'),
+            ),
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _pickPhoto(ImageSource.gallery);
+              },
+              child: const Text('Галерея'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Отмена'),
+          ),
+        ),
+      );
+      return;
+    }
+
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
@@ -193,14 +224,12 @@ class _LectureChatScreenState extends State<LectureChatScreen> {
           setState(() => _isCompiling = false);
           AppSnackBar.success(context, 'Конспект скомпилирован!');
           // Открываем просмотр
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(
-              builder: (_) => MarkdownViewerScreen(
-                title: widget.subject,
-                subtitle: 'Скомпилировано сейчас',
-                markdownContent: result.mdContent,
-              ),
-            ),
+          Navigator.of(context).pushReplacement( // iOS
+            buildRoute(MarkdownViewerScreen(
+              title: widget.subject,
+              subtitle: 'Скомпилировано сейчас',
+              markdownContent: result.mdContent,
+            )),
           );
         } catch (e) {
           if (!mounted) return;
@@ -251,14 +280,7 @@ class _LectureChatScreenState extends State<LectureChatScreen> {
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   child: _isCompiling
-                      ? SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: theme.colorScheme.onPrimary,
-                          ),
-                        )
+                      ? buildSmallLoader(color: theme.colorScheme.onPrimary) // iOS
                       : Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [

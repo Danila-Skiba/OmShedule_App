@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import '../core/services/auth_service.dart';
 import '../core/services/lecture_api_service.dart';
+import '../core/utils/platform_utils.dart';
 import '../widgets/base_container.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_snackbar.dart';
@@ -96,8 +98,7 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
           if (!mounted) return;
           // Открываем чат
           Navigator.of(context, rootNavigator: true).push(
-            MaterialPageRoute(
-              builder: (_) => LectureChatScreen(
+            buildRoute(LectureChatScreen( // iOS
                 sessionId: session.sessionId,
                 subject: session.subject,
               ),
@@ -115,14 +116,12 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
     if (session.isCompiled) {
       _openCompiled(session);
     } else {
-      // Открываем чат для продолжения
+      // Открываем чат для продолжения // iOS
       Navigator.of(context, rootNavigator: true).push(
-        MaterialPageRoute(
-          builder: (_) => LectureChatScreen(
-            sessionId: session.sessionId,
-            subject: session.subject,
-          ),
-        ),
+        buildRoute(LectureChatScreen(
+          sessionId: session.sessionId,
+          subject: session.subject,
+        )),
       ).then((_) => _loadSessions());
     }
   }
@@ -133,14 +132,12 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
       final full = await LectureApiService.instance.getSession(session.sessionId);
       if (!mounted) return;
       if (full.mdContent != null && full.mdContent!.isNotEmpty) {
-        Navigator.of(context, rootNavigator: true).push(
-          MaterialPageRoute(
-            builder: (_) => MarkdownViewerScreen(
-              title: full.subject,
-              subtitle: _formatDate(full.compiledAt ?? full.createdAt),
-              markdownContent: full.mdContent!,
-            ),
-          ),
+        Navigator.of(context, rootNavigator: true).push( // iOS
+          buildRoute(MarkdownViewerScreen(
+            title: full.subject,
+            subtitle: _formatDate(full.compiledAt ?? full.createdAt),
+            markdownContent: full.mdContent!,
+          )),
         );
       } else {
         AppSnackBar.error(context, 'Конспект пуст');
@@ -192,7 +189,7 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(title: const Text('Конспекты')),
+      appBar: buildAppBar(context: context, title: 'Конспекты'), // iOS
       floatingActionButton: auth.isAuthenticated
           ? Padding(
               padding: const EdgeInsets.only(bottom: 100),
@@ -206,7 +203,7 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
       body: !auth.isAuthenticated
           ? _buildAuthPrompt(theme, primary, onSurface)
           : _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? Center(child: buildLoader()) // iOS
               : _error != null
                   ? _buildError(theme, onSurface)
                   : RefreshIndicator(
@@ -237,19 +234,27 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
               style: TextStyle(fontSize: 13, color: onSurface.withValues(alpha: 0.5)),
             ),
             const SizedBox(height: 24),
-            SizedBox(
+            SizedBox( // iOS
               width: 200,
               height: 48,
-              child: ElevatedButton(
-                onPressed: () => context.push('/auth'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
-                  foregroundColor: theme.colorScheme.onPrimary,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-                  elevation: 0,
-                ),
-                child: const Text('Войти', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-              ),
+              child: isIOS
+                  ? CupertinoButton(
+                      onPressed: () => context.push('/auth'),
+                      color: primary,
+                      borderRadius: BorderRadius.circular(14),
+                      padding: EdgeInsets.zero,
+                      child: const Text('Войти', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                    )
+                  : ElevatedButton(
+                      onPressed: () => context.push('/auth'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: primary,
+                        foregroundColor: theme.colorScheme.onPrimary,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        elevation: 0,
+                      ),
+                      child: const Text('Войти', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+                    ),
             ),
           ],
         ),
@@ -278,17 +283,32 @@ class _LectureNotesScreenState extends State<LectureNotesScreen> {
               style: TextStyle(fontSize: 13, color: onSurface.withValues(alpha: 0.5)),
             ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _loadSessions,
-              icon: const Icon(Icons.refresh_rounded, size: 18),
-              label: const Text('Повторить'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: theme.colorScheme.primary,
-                foregroundColor: theme.colorScheme.onPrimary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                elevation: 0,
-              ),
-            ),
+            isIOS // iOS
+                ? CupertinoButton(
+                    onPressed: _loadSessions,
+                    color: theme.colorScheme.primary,
+                    borderRadius: BorderRadius.circular(12),
+                    padding: const EdgeInsets.symmetric(horizontal: 20),
+                    child: const Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.refresh_rounded, size: 18, color: CupertinoColors.white),
+                        SizedBox(width: 6),
+                        Text('Повторить', style: TextStyle(color: CupertinoColors.white)),
+                      ],
+                    ),
+                  )
+                : ElevatedButton.icon(
+                    onPressed: _loadSessions,
+                    icon: const Icon(Icons.refresh_rounded, size: 18),
+                    label: const Text('Повторить'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: theme.colorScheme.primary,
+                      foregroundColor: theme.colorScheme.onPrimary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      elevation: 0,
+                    ),
+                  ),
           ],
         ),
       ),

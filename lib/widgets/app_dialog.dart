@@ -1,4 +1,6 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../core/utils/platform_utils.dart';
 
 /// Единый привлекательный диалог для всего приложения.
 class AppDialog extends StatelessWidget {
@@ -39,6 +41,44 @@ class AppDialog extends StatelessWidget {
     bool isDanger = false,
     bool isDestructive = false,
   }) {
+    // iOS — CupertinoAlertDialog
+    if (isIOS) {
+      return showCupertinoDialog<bool>(
+        context: context,
+        builder: (_) => CupertinoAlertDialog(
+          title: Text(title),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (message != null) ...[
+                const SizedBox(height: 4),
+                Text(message),
+              ],
+              if (content != null) ...[
+                const SizedBox(height: 10),
+                content,
+              ],
+            ],
+          ),
+          actions: [
+            CupertinoDialogAction(
+              onPressed: () => Navigator.of(_).pop(false),
+              child: Text(cancelText),
+            ),
+            CupertinoDialogAction(
+              isDestructiveAction: isDanger || isDestructive,
+              onPressed: () {
+                Navigator.of(_).pop(true);
+                onConfirm?.call();
+              },
+              child: Text(confirmText),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Android — Material Dialog
     return showDialog<bool>(
       context: context,
       barrierColor: Colors.black38,

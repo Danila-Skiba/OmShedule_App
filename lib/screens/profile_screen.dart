@@ -1,4 +1,5 @@
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../core/services/task_service.dart';
 import '../core/services/auth_service.dart';
+import '../core/utils/platform_utils.dart';
 import '../widgets/base_container.dart';
 import '../widgets/app_dialog.dart';
 import '../widgets/app_snackbar.dart';
@@ -82,13 +84,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
       int.parse(dateParts[2]),
     );
     Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => AddTaskScreen(
-          forDate: forDate,
-          onSaved: _loadTasks,
-          existingTask: task,
-        ),
-      ),
+      buildRoute(AddTaskScreen( // iOS
+        forDate: forDate,
+        onSaved: _loadTasks,
+        existingTask: task,
+      )),
     );
   }
 
@@ -101,8 +101,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        title: const Text('Профиль'),
+      appBar: buildAppBar( // iOS
+        context: context,
+        title: 'Профиль',
         actions: [
           IconButton(
             icon: const Icon(Icons.settings_rounded),
@@ -117,8 +118,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
             padding: const EdgeInsets.all(16),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
-                _buildStatistics(completionRate),
-                const SizedBox(height: 16),
                 _buildTasksSection(completedTasks, totalTasks, completionRate),
                 const SizedBox(height: 16),
                 // _buildAchievements(),
@@ -235,95 +234,32 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       ],
                     ),
                   ),
-                  SizedBox(
+                  SizedBox( // iOS
                     height: 38,
-                    child: ElevatedButton(
-                      onPressed: () => context.push('/auth'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                        elevation: 0,
-                        padding: const EdgeInsets.symmetric(horizontal: 18),
-                      ),
-                      child: const Text('Войти', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                    ),
+                    child: isIOS
+                        ? CupertinoButton(
+                            onPressed: () => context.push('/auth'),
+                            color: primary,
+                            padding: const EdgeInsets.symmetric(horizontal: 18),
+                            borderRadius: BorderRadius.circular(10),
+                            minSize: 38,
+                            child: const Text('Войти', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                          )
+                        : ElevatedButton(
+                            onPressed: () => context.push('/auth'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: primary,
+                              foregroundColor: theme.colorScheme.onPrimary,
+                              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              elevation: 0,
+                              padding: const EdgeInsets.symmetric(horizontal: 18),
+                            ),
+                            child: const Text('Войти', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                          ),
                   ),
                 ],
               ),
       ),
-    );
-  }
-
-  Widget _buildStatistics(int completionRate) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final onSurf = theme.colorScheme.onSurface;
-    final onSurfVar = theme.colorScheme.onSurfaceVariant;
-    final primary = theme.colorScheme.primary;
-    return Row(
-      children: [
-        Expanded(
-          child: BaseContainer(
-            isGlass: isDark,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Посещаемость', style: theme.textTheme.bodyMedium?.copyWith(color: onSurfVar)),
-                    const Icon(Icons.trending_up_rounded, color: AppColors.success, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text('78%', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: primary)),
-                const SizedBox(height: 8),
-                const AppProgress(value: 78, height: 8),
-                const SizedBox(height: 8),
-                Text('За неделю', style: theme.textTheme.bodySmall?.copyWith(color: onSurfVar)),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: BaseContainer(
-            isGlass: isDark,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('Активность', style: theme.textTheme.bodyMedium?.copyWith(color: onSurfVar)),
-                    Icon(Icons.calendar_today_rounded, color: theme.colorScheme.secondary, size: 16),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text('4.2', style: theme.textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.bold, color: primary)),
-                const SizedBox(height: 8),
-                Row(
-                  children: List.generate(5, (i) => Expanded(
-                    child: Container(
-                      margin: const EdgeInsets.only(right: 2),
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: i < 4 ? theme.colorScheme.primary : theme.dividerColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                    ),
-                  )),
-                ),
-                const SizedBox(height: 8),
-                Text('За месяц', style: theme.textTheme.bodySmall?.copyWith(color: onSurfVar)),
-              ],
-            ),
-          ),
-        ),
-      ],
     );
   }
 

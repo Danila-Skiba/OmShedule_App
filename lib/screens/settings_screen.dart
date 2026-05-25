@@ -1,9 +1,11 @@
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_colors.dart';
 import '../constants/app_strings.dart';
 import '../core/theme/theme_notifier.dart';
+import '../core/utils/platform_utils.dart';
 import '../widgets/base_container.dart';
 import '../widgets/app_switch.dart';
 
@@ -37,9 +39,7 @@ static const _accentOptions = [
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      appBar:  AppBar(
-      title: const Text('Настройки'),    
-    ),
+      appBar: buildAppBar(context: context, title: 'Настройки'), // iOS
 
     body: CustomScrollView(
         slivers: [
@@ -113,16 +113,36 @@ static const _accentOptions = [
                   ),
                 ),
                 const SizedBox(height: 8),
-                SegmentedButton<ThemeMode>(
-                  segments: const [
-                    ButtonSegment(value: ThemeMode.light, label: Text('Светлая'), icon: Icon(Icons.light_mode_rounded)),
-                    ButtonSegment(value: ThemeMode.dark, label: Text('Тёмная'), icon: Icon(Icons.dark_mode_rounded)),
-                  ],
-                  selected: {themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light},
-                  onSelectionChanged: (Set<ThemeMode> s) {
-                    themeNotifier.setThemeMode(s.first);
-                  },
-                ),
+                isIOS // iOS
+                    ? SizedBox(
+                        width: double.infinity,
+                        child: CupertinoSlidingSegmentedControl<ThemeMode>(
+                          groupValue: themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light,
+                          children: const {
+                            ThemeMode.light: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('Светлая'),
+                            ),
+                            ThemeMode.dark: Padding(
+                              padding: EdgeInsets.symmetric(horizontal: 12),
+                              child: Text('Тёмная'),
+                            ),
+                          },
+                          onValueChanged: (ThemeMode? mode) {
+                            if (mode != null) themeNotifier.setThemeMode(mode);
+                          },
+                        ),
+                      )
+                    : SegmentedButton<ThemeMode>(
+                        segments: const [
+                          ButtonSegment(value: ThemeMode.light, label: Text('Светлая'), icon: Icon(Icons.light_mode_rounded)),
+                          ButtonSegment(value: ThemeMode.dark, label: Text('Тёмная'), icon: Icon(Icons.dark_mode_rounded)),
+                        ],
+                        selected: {themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light},
+                        onSelectionChanged: (Set<ThemeMode> s) {
+                          themeNotifier.setThemeMode(s.first);
+                        },
+                      ),
                 const SizedBox(height: 16),
                 Text(
                   'Акцентный цвет',

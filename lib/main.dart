@@ -40,22 +40,26 @@ class OmstuScheduleApp extends StatelessWidget {
       ],
       child: Consumer<ThemeNotifier>(
         builder: (context, themeNotifier, _) {
-          return MaterialApp.router(
-            title: 'Расписание ОмГТУ',
-            debugShowCheckedModeBanner: false,
-            localizationsDelegates: const [
-              GlobalMaterialLocalizations.delegate,
-              GlobalWidgetsLocalizations.delegate,
-              GlobalCupertinoLocalizations.delegate,
-            ],
-            supportedLocales: const [
-              Locale('ru'),
-              Locale('en'),
-            ],
-            theme: themeNotifier.lightTheme(),
-            darkTheme: themeNotifier.darkTheme(),
-            themeMode: themeNotifier.themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light,
-            routerConfig: appRouter,
+          return GestureDetector(
+            onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+            behavior: HitTestBehavior.translucent,
+            child: MaterialApp.router(
+              title: 'Расписание ОмГТУ',
+              debugShowCheckedModeBanner: false,
+              localizationsDelegates: const [
+                GlobalMaterialLocalizations.delegate,
+                GlobalWidgetsLocalizations.delegate,
+                GlobalCupertinoLocalizations.delegate,
+              ],
+              supportedLocales: const [
+                Locale('ru'),
+                Locale('en'),
+              ],
+              theme: themeNotifier.lightTheme(),
+              darkTheme: themeNotifier.darkTheme(),
+              themeMode: themeNotifier.themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light,
+              routerConfig: appRouter,
+            ),
           );
         },
       ),

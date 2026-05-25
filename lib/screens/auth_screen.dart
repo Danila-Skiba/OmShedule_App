@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import '../core/api/api_config.dart';
 import '../core/services/auth_service.dart';
+import '../core/utils/platform_utils.dart';
 import '../widgets/app_snackbar.dart';
 
 /// Экран авторизации / регистрации.
@@ -151,7 +153,7 @@ class _AuthScreenState extends State<AuthScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(title: const Text('Аккаунт')),
+      appBar: buildAppBar(context: context, title: 'Аккаунт'), // iOS
       body: Column(
         children: [
           const SizedBox(height: 20),
@@ -363,6 +365,33 @@ class _AuthScreenState extends State<AuthScreen> {
   }) {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
+
+    if (isIOS) { // iOS
+      return CupertinoTextField(
+        controller: ctrl,
+        obscureText: obscure,
+        keyboardType: keyboardType,
+        placeholder: hint,
+        prefix: Padding(
+          padding: const EdgeInsets.only(left: 12),
+          child: Icon(icon, size: 20, color: CupertinoColors.systemGrey),
+        ),
+        style: TextStyle(color: theme.colorScheme.onSurface),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        decoration: BoxDecoration(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.06)
+              : CupertinoColors.tertiarySystemBackground,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.1)
+                : theme.colorScheme.primary.withValues(alpha: 0.12),
+          ),
+        ),
+      );
+    }
+
     return TextField(
       controller: ctrl,
       obscureText: obscure,
@@ -427,6 +456,23 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildPrimaryButton(String label, VoidCallback? onTap) {
     final theme = Theme.of(context);
+
+    if (isIOS) { // iOS
+      return SizedBox(
+        height: 52,
+        width: double.infinity,
+        child: CupertinoButton(
+          onPressed: onTap,
+          color: theme.colorScheme.primary,
+          borderRadius: BorderRadius.circular(14),
+          padding: EdgeInsets.zero,
+          child: _loading
+              ? buildSmallLoader(color: CupertinoColors.white)
+              : Text(label, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+        ),
+      );
+    }
+
     return SizedBox(
       height: 52,
       child: ElevatedButton(
@@ -441,14 +487,7 @@ class _AuthScreenState extends State<AuthScreen> {
               const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
         ),
         child: _loading
-            ? SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: theme.colorScheme.onPrimary,
-                ),
-              )
+            ? buildSmallLoader(color: theme.colorScheme.onPrimary)
             : Text(label),
       ),
     );
@@ -625,13 +664,10 @@ class _TelegramPollingDialogState extends State<_TelegramPollingDialog> {
 
             // Индикатор / таймер
             if (_polling) ...[
-              SizedBox(
+              SizedBox( // iOS
                 width: 32,
                 height: 32,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: tgColor,
-                ),
+                child: buildLoader(radius: 16, strokeWidth: 2.5, color: tgColor),
               ),
               const SizedBox(height: 12),
               Text(
@@ -647,40 +683,53 @@ class _TelegramPollingDialogState extends State<_TelegramPollingDialog> {
             ],
 
             // Кнопки
-            if (_error != null)
+            if (_error != null) // iOS
               SizedBox(
                 width: double.infinity,
                 height: 46,
-                child: ElevatedButton(
-                  onPressed: _cancel,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: theme.colorScheme.onPrimary,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    elevation: 0,
-                  ),
-                  child: const Text('Закрыть'),
-                ),
+                child: isIOS
+                    ? CupertinoButton(
+                        onPressed: _cancel,
+                        color: primary,
+                        borderRadius: BorderRadius.circular(12),
+                        padding: EdgeInsets.zero,
+                        child: const Text('Закрыть', style: TextStyle(color: CupertinoColors.white)),
+                      )
+                    : ElevatedButton(
+                        onPressed: _cancel,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: primary,
+                          foregroundColor: theme.colorScheme.onPrimary,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                        ),
+                        child: const Text('Закрыть'),
+                      ),
               )
             else
               SizedBox(
                 width: double.infinity,
                 height: 46,
-                child: OutlinedButton(
-                  onPressed: _cancel,
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: onSurface.withValues(alpha: 0.6),
-                    side: BorderSide(
-                      color: onSurface.withValues(alpha: 0.15),
-                    ),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                  ),
-                  child: const Text('Отмена'),
-                ),
+                child: isIOS // iOS
+                    ? CupertinoButton(
+                        onPressed: _cancel,
+                        child: Text('Отмена', style: TextStyle(color: onSurface.withValues(alpha: 0.6))),
+                      )
+                    : OutlinedButton(
+                        onPressed: _cancel,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: onSurface.withValues(alpha: 0.6),
+                          side: BorderSide(
+                            color: onSurface.withValues(alpha: 0.15),
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                        ),
+                        child: const Text('Отмена'),
+                      ),
               ),
           ],
         ),
