@@ -4,7 +4,7 @@ class ApiConfig {
 
 //  '185.42.164.201'
 // '192.168.31.29'
-  static const String host = '192.168.31.29';
+  static const String host = '136.234.124.48';
 
   static const int port = 8000;
   static const String baseUrl = 'http://$host:$port';

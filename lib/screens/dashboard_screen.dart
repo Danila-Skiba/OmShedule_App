@@ -2006,14 +2006,14 @@ class _DashboardLessonSheet extends StatelessWidget {
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.of(ctx).pop();
-                _openIn2GIS(info);
+                // _openIn2GIS(info);
               },
               child: const Text('2ГИС'),
             ),
             CupertinoActionSheetAction(
               onPressed: () {
                 Navigator.of(ctx).pop();
-                _openInYandexMaps(info);
+                // _openInYandexMaps(info);
               },
               child: const Text('Яндекс Карты'),
             ),
