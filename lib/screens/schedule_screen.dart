@@ -189,25 +189,37 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   // Фильтры
   // ---------------------------------------------------------------------------
 
+  /// Возвращает название, только если оно есть в актуальном справочнике.
+  static String? _validGroup(String? name) =>
+      ScheduleData.hasGroup(name) ? name : null;
+
+  static String? _validTeacher(String? name) =>
+      ScheduleData.hasPerson(name) ? name : null;
+
+  static String? _validAudience(String? name) =>
+      ScheduleData.hasAuditorium(name) ? name : null;
+
   void _applyDefaultsFromProfile() {
-    // Восстанавливаем все сохранённые значения фильтров
+    // Восстанавливаем все сохранённые значения фильтров.
+    // Справочники обновляются, поэтому сохранённые названия проверяем:
+    // отсутствующие в справочнике считаем несохранёнными.
     final savedType = SettingsService.getLastFilterType();
-    final savedGroup = SettingsService.getLastGroupId();
-    final savedTeacher = SettingsService.getLastTeacherId();
-    final savedAudience = SettingsService.getLastAudienceId();
+    final savedGroup = _validGroup(SettingsService.getLastGroupId());
+    final savedTeacher = _validTeacher(SettingsService.getLastTeacherId());
+    final savedAudience = _validAudience(SettingsService.getLastAudienceId());
 
     final role = SettingsService.getProfileRole();
 
     // Всегда восстанавливаем ВСЕ фильтры из памяти
     final group = savedGroup ??
         (role == 'student'
-            ? ScheduleData.getgroups.keys.first
-            : SettingsService.getDefaultGroupId());
+            ? ScheduleData.firstGroupName
+            : _validGroup(SettingsService.getDefaultGroupId()));
     _filterController.updateGroup(group);
 
     final teacher = savedTeacher ??
-        SettingsService.getDefaultTeacherId() ??
-        ScheduleData.getpersons.keys.first;
+        _validTeacher(SettingsService.getDefaultTeacherId()) ??
+        ScheduleData.firstPersonName;
     _filterController.updateTeacher(teacher);
 
     if (savedAudience != null) {
@@ -382,9 +394,10 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   // AppBar
   // ---------------------------------------------------------------------------
 
-  AppBar _buildHeader() {
-    return AppBar(
-      title: const Text('Расписание'),
+  PreferredSizeWidget _buildHeader() {
+    return buildAppBar( // iOS
+      context: context,
+      title: 'Расписание',
       actions: [
         IconButton(
           icon: AnimatedSwitcher(
@@ -788,7 +801,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   // ---------------------------------------------------------------------------
-  // Segmented control (Сегодня / Неделя)
+  // Segmented control (День / Неделя)
   // ---------------------------------------------------------------------------
 
   Widget _buildSegmentedControl() {
@@ -836,7 +849,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             ),
             Row(
               children: [
-                _segmentBtn('Сегодня', 'today', _view == 'today', isDark, theme),
+                _segmentBtn('День', 'today', _view == 'today', isDark, theme),
                 _segmentBtn('Неделя', 'week', _view == 'week', isDark, theme),
               ],
             ),
@@ -1283,20 +1296,14 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   }
 
   void _showLessonDetails(Lesson l) {
-    if (isIOS) { // iOS
-      showCupertinoModalPopup(
-        context: context,
-        builder: (_) => _LessonDetailsSheet(lesson: l),
-      );
-    } else {
-      showModalBottomSheet(
-        context: context,
-        useRootNavigator: true,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _LessonDetailsSheet(lesson: l),
-      );
-    }
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      enableDrag: true, // свайп вниз для закрытия
+      backgroundColor: Colors.transparent,
+      builder: (_) => _LessonDetailsSheet(lesson: l),
+    );
   }
 
   // ---------------------------------------------------------------------------
@@ -1904,7 +1911,7 @@ class _LessonDetailsSheet extends StatelessWidget {
               // Карточка времени
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1922,27 +1929,28 @@ class _LessonDetailsSheet extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(Icons.access_time_rounded, color: primary, size: 20),
+                        child: Icon(Icons.access_time_rounded, color: primary, size: 18),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${lesson.timeStart} – ${lesson.timeEnd}',
+                              '${lesson.timeStart}–${lesson.timeEnd}',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: onSurface,
-                                letterSpacing: 0.2,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -1963,7 +1971,7 @@ class _LessonDetailsSheet extends StatelessWidget {
               // Карточка аудитории
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1981,15 +1989,15 @@ class _LessonDetailsSheet extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: AppColors.error.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 20),
+                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 18),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1997,7 +2005,7 @@ class _LessonDetailsSheet extends StatelessWidget {
                             Text(
                               lesson.room ?? '—',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: onSurface,
                               ),

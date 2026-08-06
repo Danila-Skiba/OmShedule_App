@@ -5,13 +5,15 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 import 'app_router.dart';
 import 'core/services/settings_service.dart';
-import 'core/services/auth_service.dart';
+import 'data/schedule_data.dart';
 import 'core/theme/theme_notifier.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await initializeDateFormatting('ru');
   await SettingsService.init();
+  // Справочники групп/преподавателей/аудиторий из assets/data
+  await ScheduleData.load();
   await SystemChrome.setPreferredOrientations([
     DeviceOrientation.portraitUp,
     DeviceOrientation.portraitDown,
@@ -23,8 +25,6 @@ void main() async {
       systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
-  // Инициализируем сервис авторизации (проверка токена)
-  await AuthService.instance.init();
   runApp(const OmstuScheduleApp());
 }
 
@@ -36,7 +36,6 @@ class OmstuScheduleApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => ThemeNotifier()),
-        ChangeNotifierProvider.value(value: AuthService.instance),
       ],
       child: Consumer<ThemeNotifier>(
         builder: (context, themeNotifier, _) {

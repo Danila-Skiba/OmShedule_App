@@ -2,14 +2,17 @@ import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_constants.dart';
 import '../core/utils/platform_utils.dart';
+import '../models/schedule_entry.dart';
 
 /// Тип выбора: группа, преподаватель, аудитория
 enum SelectType { group, teacher, room }
 
-/// Экран выбора одного значения из списка с поиском
+/// Экран выбора одного значения из списка с поиском.
+///
+/// Возвращает через `pop` название выбранной записи ([ScheduleEntry.name]).
 class SelectScreen extends StatefulWidget {
   final SelectType type;
-  final List<String> items;
+  final List<ScheduleEntry> items;
   final String? selectedId;
   final String title;
 
@@ -27,7 +30,7 @@ class SelectScreen extends StatefulWidget {
 
 class _SelectScreenState extends State<SelectScreen> {
   final _searchController = TextEditingController();
-  List<String> _filtered = [];
+  List<ScheduleEntry> _filtered = [];
 
   @override
   void initState() {
@@ -48,8 +51,11 @@ class _SelectScreenState extends State<SelectScreen> {
       if (query.isEmpty) {
         _filtered = widget.items;
       } else {
+        // Ищем и по названию, и по описанию (факультет, кафедра, корпус)
         _filtered = widget.items
-            .where((item) => item.toLowerCase().contains(query))
+            .where((item) =>
+                item.name.toLowerCase().contains(query) ||
+                item.desc.toLowerCase().contains(query))
             .toList();
       }
     });
@@ -167,7 +173,8 @@ class _SelectScreenState extends State<SelectScreen> {
                     ),
                     itemCount: _filtered.length,
                     itemBuilder: (context, index) {
-                      final id = _filtered[index];
+                      final entry = _filtered[index];
+                      final id = entry.name;
                       final selected = widget.selectedId == id;
                       return Padding(
                         padding:
@@ -199,17 +206,38 @@ class _SelectScreenState extends State<SelectScreen> {
                               child: Row(
                                 children: [
                                   Expanded(
-                                    child: Text(
-                                      id,
-                                      style:
-                                          theme.textTheme.titleMedium?.copyWith(
-                                        color: theme.colorScheme.onSurface,
-                                        fontWeight: selected
-                                            ? FontWeight.w600
-                                            : FontWeight.normal,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text(
+                                          id,
+                                          style: theme.textTheme.titleMedium
+                                              ?.copyWith(
+                                            color: theme.colorScheme.onSurface,
+                                            fontWeight: selected
+                                                ? FontWeight.w600
+                                                : FontWeight.normal,
+                                          ),
+                                        ),
+                                        if (entry.desc.isNotEmpty) ...[
+                                          const SizedBox(height: 2),
+                                          Text(
+                                            entry.desc,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: theme.textTheme.bodySmall
+                                                ?.copyWith(
+                                              color: theme.colorScheme.onSurface
+                                                  .withValues(alpha: 0.5),
+                                            ),
+                                          ),
+                                        ],
+                                      ],
                                     ),
                                   ),
+                                  if (selected) const SizedBox(width: 8),
                                   if (selected)
                                     Icon(
                                       Icons.check_circle_rounded,

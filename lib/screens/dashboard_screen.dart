@@ -2,11 +2,13 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
-import 'package:omstu_schedule/core/services/schedule_news.dart';
+import 'package:omstu_schedule/core/services/news_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../constants/app_colors.dart';
 import '../data/building_data.dart';
+import '../data/schedule_data.dart';
 import '../constants/app_constants.dart';
 import '../widgets/base_container.dart';
 import '../models/lesson.dart';
@@ -36,10 +38,11 @@ class DashboardScreen extends StatefulWidget {
   State<DashboardScreen> createState() => _DashboardScreenState();
 }
 
+/// Раздел новостей на сайте вуза — открывается по кнопке «Все».
+const String _newsSiteUrl = 'https://www.omgtu.ru/news/';
+
 class _DashboardScreenState extends State<DashboardScreen> {
-  final _repository = NewsRepositoryImpl();
   List<News> _news = [];
-  String? _error;
   bool _isLoading = true;
 
   // Сегодняшнее расписание и задачи
@@ -67,8 +70,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               SliverList(
               delegate: SliverChildListDelegate([
                 const SizedBox(height: 8),
-                _buildSemesterTimer(context),
-                const SizedBox(height: 12),
                 _buildTodayPanel(context),
                 const SizedBox(height: 16),
                 _buildNewsSection(_news),
@@ -85,18 +86,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     setState(() => _isLoading = true);
 
-    final result = await _repository.getNews();
+    final result = await NewsService.instance.getNews();
 
     if (!mounted) return;
     setState(() {
       _isLoading = false;
-      if (result.error != null) {
-        _error = result.error;
-        _news = [];
-      } else {
-        _error = null;
-        _news = result.news;
-      }
+      _news = result.error != null ? [] : result.news;
     });
   }
 
@@ -129,6 +124,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
           break;
       }
     } catch (_) {}
+
+    // Справочники обновляются — сохранённое значение могло исчезнуть
+    if (!ScheduleData.hasGroup(groupIds)) groupIds = null;
+    if (!ScheduleData.hasPerson(teacherNames)) teacherNames = null;
+    if (!ScheduleData.hasAuditorium(roomIds)) roomIds = null;
 
     List<Lesson> lessons = [];
     bool isTomorrow = false;
@@ -204,18 +204,42 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return AppBar(
-        title: const Text('Расписание ОмГТУ'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => _showAppBarPopup(context),
-          ),
-        ],
-      );
+    return buildAppBar( // iOS
+      context: context,
+      title: 'Расписание ОмГТУ',
+      actions: [
+        IconButton(
+          icon: Icon(isIOS ? CupertinoIcons.ellipsis : Icons.menu), // iOS
+          onPressed: () => _showAppBarPopup(context),
+        ),
+      ],
+    );
   }
 
   void _showAppBarPopup(BuildContext context) {
+    // iOS — CupertinoActionSheet
+    if (isIOS) { // iOS
+      showCupertinoModalPopup(
+        context: context,
+        builder: (ctx) => CupertinoActionSheet(
+          actions: [
+            CupertinoActionSheetAction(
+              onPressed: () {
+                Navigator.of(ctx).pop();
+                context.push('/settings');
+              },
+              child: const Text('Настройки'),
+            ),
+          ],
+          cancelButton: CupertinoActionSheetAction(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Отмена'),
+          ),
+        ),
+      );
+      return;
+    }
+
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     showDialog<void>(
@@ -478,120 +502,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Widget _buildSemesterTimer(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final now = DateTime.now();
-
-    // Конец весеннего семестра — 30 июня, осеннего — 31 декабря
-    final semesterEnd = now.month <= 6
-        ? DateTime(now.year, 6, 30)
-        : DateTime(now.year, 12, 31);
-    final diff = semesterEnd.difference(now);
-    final days = diff.inDays;
-    final hours = diff.inHours % 24;
-
-    // Выбираем фразу
-    String phrase;
-    if (days <= 0) {
-      phrase = 'Каникулы!!! 🎉';
-    } else if (days <= 7) {
-      phrase = 'Финишная прямая... 🏃';
-    } else if (days <= 30) {
-      phrase = 'Скоро свобода! 💪';
-    } else if (days <= 60) {
-      phrase = 'Половина пути ⏳';
-    } else {
-      phrase = 'Терпим... 📚';
-    }
-
-    final daysWord = _pluralDays(days);
-
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: isDark
-                ? [
-                    theme.colorScheme.primary.withOpacity(0.12),
-                    theme.colorScheme.primary.withOpacity(0.06),
-                  ]
-                : [
-                    theme.colorScheme.primary.withOpacity(0.12),
-                    theme.colorScheme.primary.withOpacity(0.06),
-                  ],
-          ),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: isDark
-                ? theme.colorScheme.primary.withOpacity(0.2)
-                : theme.colorScheme.primary.withOpacity(0.18),
-          ),
-          boxShadow: isDark
-              ? null
-              : [
-                  BoxShadow(
-                    color: theme.colorScheme.primary.withOpacity(0.08),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    phrase,
-                    style: theme.textTheme.titleSmall?.copyWith(
-                      fontWeight: FontWeight.w600,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    days <= 0
-                        ? 'Семестр окончен'
-                        : 'До конца семестра $days $daysWord $hoursч',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: isDark
-                          ? theme.colorScheme.onSurfaceVariant
-                          : theme.colorScheme.onSurface.withOpacity(0.6),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (days > 0)
-              Text(
-                '$days',
-                style: TextStyle(
-                  fontSize: 32,
-                  fontWeight: FontWeight.w800,
-                  color: theme.colorScheme.primary.withOpacity(isDark ? 0.25 : 0.2),
-                ),
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  static String _pluralDays(int n) {
-    final mod10 = n % 10;
-    final mod100 = n % 100;
-    if (mod100 >= 11 && mod100 <= 19) return 'дней';
-    if (mod10 == 1) return 'день';
-    if (mod10 >= 2 && mod10 <= 4) return 'дня';
-    return 'дней';
-  }
-
   /// Проверяет, идёт ли пара прямо сейчас.
   bool _isLessonNow(Lesson lesson) {
     if (_showingTomorrow) return false;
@@ -610,20 +520,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   /// Показать BottomSheet с деталями пары (как на странице расписания).
   void _showLessonDetailsFromDashboard(Lesson lesson) {
-    if (isIOS) { // iOS
-      showCupertinoModalPopup(
-        context: context,
-        builder: (_) => _DashboardLessonSheet(lesson: lesson),
-      );
-    } else {
-      showModalBottomSheet(
-        context: context,
-        useRootNavigator: true,
-        isScrollControlled: true,
-        backgroundColor: Colors.transparent,
-        builder: (_) => _DashboardLessonSheet(lesson: lesson),
-      );
-    }
+    showModalBottomSheet(
+      context: context,
+      useRootNavigator: true,
+      isScrollControlled: true,
+      enableDrag: true, // свайп вниз для закрытия
+      backgroundColor: Colors.transparent,
+      builder: (_) => _DashboardLessonSheet(lesson: lesson),
+    );
   }
 
   /// Группирует пары по временному слоту и возвращает виджеты.
@@ -842,31 +746,92 @@ class _DashboardScreenState extends State<DashboardScreen> {
 Widget _buildNewsSection(List<News> news) {
   final theme = Theme.of(context);
   final isDark = theme.brightness == Brightness.dark;
+  final primary = theme.colorScheme.primary;
+  final onSurface = theme.colorScheme.onSurface;
 
   return Column(
     crossAxisAlignment: CrossAxisAlignment.start,
     children: [
+      // Заголовок секции — в стиле панели «Сегодня»
       Padding(
-        padding: const EdgeInsets.only(left: 18, bottom: 12),
-        child: Text(
-          'Новости ОмГТУ',
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.bold,
-            color: theme.colorScheme.onSurface,
-          ),
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: primary.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(Icons.newspaper_rounded, size: 20, color: primary),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Новости',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: onSurface,
+                    ),
+                  ),
+                  Text(
+                    'Что происходит в университете',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: onSurface.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Material(
+              color: primary.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(10),
+              child: InkWell(
+                onTap: () => launchUrl(
+                  Uri.parse(_newsSiteUrl),
+                  mode: LaunchMode.externalApplication,
+                ),
+                borderRadius: BorderRadius.circular(10),
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Все',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: primary,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.arrow_forward_ios_rounded,
+                          size: 12, color: primary),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       ),
-      Container(
-        height: 380,
-        margin: const EdgeInsets.symmetric(vertical: 4),
+      SizedBox(
+        height: 300,
         child: _isLoading
             ? ListView.separated(
                 scrollDirection: Axis.horizontal,
                 itemCount: 3,
-                padding: const EdgeInsets.only(left: 16),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
                 itemBuilder: (context, index) => SizedBox(
-                  width: 300,
+                  width: 270,
                   child: _NewsSkeletonCard(isDark: isDark),
                 ),
                 separatorBuilder: (context, index) =>
@@ -882,15 +847,13 @@ Widget _buildNewsSection(List<News> news) {
                           Icon(
                             Icons.newspaper_rounded,
                             size: 48,
-                            color: theme.colorScheme.onSurface
-                                .withValues(alpha: 0.2),
+                            color: onSurface.withValues(alpha: 0.2),
                           ),
                           const SizedBox(height: 12),
                           Text(
                             'Новостей пока нет',
                             style: theme.textTheme.bodyMedium?.copyWith(
-                              color: theme.colorScheme.onSurface
-                                  .withValues(alpha: 0.45),
+                              color: onSurface.withValues(alpha: 0.45),
                             ),
                           ),
                         ],
@@ -900,8 +863,9 @@ Widget _buildNewsSection(List<News> news) {
                 : ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: news.length,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
                     itemBuilder: (context, index) => SizedBox(
-                      width: 300,
+                      width: 270,
                       child: _NewsCard(news: news[index]),
                     ),
                     separatorBuilder: (context, index) =>
@@ -1153,46 +1117,34 @@ class _NewsSkeletonCardState extends State<_NewsSkeletonCard>
       builder: (context, child) {
         final shimmerValue = _shimmerController.value;
         return Container(
-          margin: const EdgeInsets.only(left: 16, bottom: 24, top: 10),
+          margin: const EdgeInsets.only(bottom: 14, top: 2),
+          clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
             color: widget.isDark
                 ? Colors.white.withValues(alpha: 0.05)
                 : Colors.white,
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: widget.isDark
-                  ? Colors.white.withValues(alpha: 0.08)
-                  : Colors.black.withValues(alpha: 0.08),
-            ),
+            borderRadius: BorderRadius.circular(22),
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+          child: Stack(
+            fit: StackFit.expand,
             children: [
-              // Image placeholder — верхняя часть, flex 3
-              Expanded(
-                flex: 3,
-                child: ClipRRect(
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                  child: _shimmerBox(double.infinity, double.infinity, 0, shimmerValue),
-                ),
-              ),
-              // Нижняя часть — flex 2
-              Expanded(
-                flex: 2,
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _shimmerBox(double.infinity, 13, 6, shimmerValue),
-                      const SizedBox(height: 8),
-                      _shimmerBox(200, 13, 6, shimmerValue),
-                      const SizedBox(height: 8),
-                      _shimmerBox(140, 13, 6, shimmerValue),
-                      const Spacer(),
-                      _shimmerBox(80, 13, 6, shimmerValue),
-                    ],
-                  ),
+              // Обложка во всю карточку
+              _shimmerBox(double.infinity, double.infinity, 0, shimmerValue),
+              // Строки заголовка снизу
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _shimmerBox(double.infinity, 13, 6, shimmerValue),
+                    const SizedBox(height: 8),
+                    _shimmerBox(160, 13, 6, shimmerValue),
+                    const SizedBox(height: 14),
+                    _shimmerBox(70, 11, 6, shimmerValue),
+                  ],
                 ),
               ),
             ],
@@ -1235,160 +1187,173 @@ class _NewsCard extends StatelessWidget {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
-    final onSurface = theme.colorScheme.onSurface;
-    final secondaryText = onSurface.withValues(alpha: 0.6);
 
     return GestureDetector(
-      onTap: () => launchUrl(Uri.parse(news.url)),
+      onTap: () => launchUrl(
+        Uri.parse(news.url),
+        mode: LaunchMode.externalApplication,
+      ),
       child: Container(
-        margin: const EdgeInsets.only(left: 16, bottom: 24, top: 10),
+        margin: const EdgeInsets.only(bottom: 14, top: 2),
         decoration: BoxDecoration(
-          color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.white,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.08)
-                : onSurface.withValues(alpha: 0.08),
-          ),
-          boxShadow: isDark
-              ? null
-              : [
-                  BoxShadow(
-                    color: primary.withValues(alpha: 0.06),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
+          borderRadius: BorderRadius.circular(22),
+          boxShadow: [
+            BoxShadow(
+              color: isDark
+                  ? Colors.black.withValues(alpha: 0.35)
+                  : primary.withValues(alpha: 0.14),
+              blurRadius: 18,
+              offset: const Offset(0, 8),
+            ),
+          ],
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Изображение сверху
-            Expanded(
-              flex: 3,
-              child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
-                child: Stack(
-                  fit: StackFit.expand,
-                  children: [
-                    Image.network(
-                      NewsRepositoryImpl.imageUrl(news.id),
-                      fit: BoxFit.cover,
-                      alignment: Alignment.center,
-                      loadingBuilder: (context, child, loadingProgress) {
-                        if (loadingProgress == null) return child;
-                        return Container(
-                          color: primary.withValues(alpha: isDark ? 0.08 : 0.06),
-                          child: Center( // iOS
-                            child: buildLoader(radius: 12, strokeWidth: 2.2, color: primary),
-                          ),
-                        );
-                      },
-                      errorBuilder: (context, error, stackTrace) {
-                        debugPrint('News image error for id=${news.id}: $error');
-                        return Container(
-                          color: primary.withValues(alpha: isDark ? 0.08 : 0.06),
-                          child: Center(
-                            child: Icon(
-                              Icons.broken_image_outlined,
-                              size: 40,
-                              color: secondaryText.withValues(alpha: 0.5),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                    // Градиент снизу
-                    Positioned(
-                      left: 0,
-                      right: 0,
-                      bottom: 0,
-                      height: 50,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.topCenter,
-                            end: Alignment.bottomCenter,
-                            colors: [
-                              Colors.transparent,
-                              (isDark ? Colors.black : Colors.white).withValues(alpha: 0.6),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    // Дата
-                    Positioned(
-                      top: 10,
-                      right: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                        decoration: BoxDecoration(
-                          color: (isDark ? Colors.black : Colors.white).withValues(alpha: 0.75),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          news.date,
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: onSurface.withValues(alpha: 0.7),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(22),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              // Обложка во всю карточку
+              _buildCover(context, isDark, primary),
+
+              // Затемнение снизу — под текст
+              const DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Color(0x1A000000),
+                      Color(0xD9000000),
+                    ],
+                    stops: [0.35, 0.55, 1.0],
+                  ),
                 ),
               ),
-            ),
 
-            // Заголовок и кнопка — фиксированная нижняя часть
-            Expanded(
-              flex: 2,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        news.title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: onSurface,
-                          height: 1.3,
+              // Дата — «стеклянная» плашка
+              Positioned(
+                top: 12,
+                left: 12,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.32),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.18),
                         ),
-                        maxLines: 3,
-                        overflow: TextOverflow.ellipsis,
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.schedule_rounded,
+                              size: 11, color: Colors.white),
+                          const SizedBox(width: 5),
+                          Text(
+                            news.date,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
+                  ),
+                ),
+              ),
+
+              // Заголовок и «Читать» поверх обложки
+              Positioned(
+                left: 16,
+                right: 16,
+                bottom: 16,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      news.title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
+                        height: 1.32,
+                      ),
+                      maxLines: 3,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 10),
                     Row(
                       children: [
-                        Icon(
-                          Icons.arrow_forward_rounded,
-                          size: 16,
-                          color: primary,
-                        ),
-                        const SizedBox(width: 4),
                         Text(
                           'Читать',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: primary,
+                            color: Colors.white.withValues(alpha: 0.9),
                           ),
+                        ),
+                        const SizedBox(width: 4),
+                        Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 14,
+                          color: Colors.white.withValues(alpha: 0.9),
                         ),
                       ],
                     ),
                   ],
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
+    );
+  }
+
+  /// Обложка новости: картинка либо запасная заливка с иконкой.
+  Widget _buildCover(BuildContext context, bool isDark, Color primary) {
+    final fallbackColor = primary.withValues(alpha: isDark ? 0.22 : 0.18);
+
+    Widget placeholder({IconData? icon}) => Container(
+          color: fallbackColor,
+          child: icon == null
+              ? null
+              : Center(
+                  child: Icon(
+                    icon,
+                    size: 40,
+                    color: Colors.white.withValues(alpha: 0.6),
+                  ),
+                ),
+        );
+
+    if (news.image == null || news.image!.isEmpty) {
+      return placeholder(icon: Icons.newspaper_rounded);
+    }
+
+    return CachedNetworkImage(
+      imageUrl: news.image!,
+      fit: BoxFit.cover,
+      alignment: Alignment.center,
+      placeholder: (context, url) => Container( // iOS
+        color: fallbackColor,
+        child: Center(
+          child: buildLoader(radius: 12, strokeWidth: 2.2, color: Colors.white),
+        ),
+      ),
+      errorWidget: (context, url, error) {
+        debugPrint('News image error for id=${news.id}: $error');
+        return placeholder(icon: Icons.broken_image_outlined);
+      },
     );
   }
 }
@@ -1780,7 +1745,7 @@ class _DashboardLessonSheet extends StatelessWidget {
               // Время
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1798,26 +1763,28 @@ class _DashboardLessonSheet extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: primary.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(Icons.access_time_rounded, color: primary, size: 20),
+                        child: Icon(Icons.access_time_rounded, color: primary, size: 18),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              '${lesson.timeStart} – ${lesson.timeEnd}',
+                              '${lesson.timeStart}–${lesson.timeEnd}',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: onSurface,
                               ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             const SizedBox(height: 2),
                             Text(
@@ -1838,7 +1805,7 @@ class _DashboardLessonSheet extends StatelessWidget {
               // Аудитория
               Expanded(
                 child: Container(
-                  padding: const EdgeInsets.all(14),
+                  padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       begin: Alignment.topLeft,
@@ -1856,15 +1823,15 @@ class _DashboardLessonSheet extends StatelessWidget {
                   child: Row(
                     children: [
                       Container(
-                        width: 40,
-                        height: 40,
+                        width: 36,
+                        height: 36,
                         decoration: BoxDecoration(
                           color: AppColors.error.withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 20),
+                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 18),
                       ),
-                      const SizedBox(width: 10),
+                      const SizedBox(width: 8),
                       Flexible(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1872,7 +1839,7 @@ class _DashboardLessonSheet extends StatelessWidget {
                             Text(
                               lesson.room ?? '—',
                               style: TextStyle(
-                                fontSize: 15,
+                                fontSize: 13,
                                 fontWeight: FontWeight.w700,
                                 color: onSurface,
                               ),

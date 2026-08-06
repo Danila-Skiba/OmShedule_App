@@ -17,10 +17,9 @@ class MobileLayout extends StatelessWidget {
         label: 'Расписание',
         icon: Icons.calendar_today_rounded),
     _NavItem(
-        path: '/notes',
-        label: 'Конспекты',
-        icon: Icons.auto_stories_rounded),
-    _NavItem(path: '/profile', label: 'Профиль', icon: Icons.person_rounded),
+        path: '/tasks',
+        label: 'Задачи',
+        icon: Icons.checklist_rounded),
   ];
 
   @override

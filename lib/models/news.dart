@@ -1,9 +1,15 @@
-/// Модель новости из API.
+/// Модель новости ОмГТУ (парсится с сайта вуза).
 class News {
   final String id;
   final String title;
+
+  /// Дата в формате dd.MM.yyyy (как на сайте вуза).
   final String date;
+
+  /// Ссылка на страницу новости.
   final String url;
+
+  /// Полный URL изображения новости (или null).
   final String? image;
 
   const News({
@@ -23,6 +29,14 @@ class News {
       image: json['image']?.toString(),
     );
   }
+
+  Map<String, dynamic> toJson() => {
+        'id': id,
+        'title': title,
+        'date': date,
+        'url': url,
+        'image': image,
+      };
 
   /// Парсинг даты для сортировки.
   DateTime? get parsedDate {

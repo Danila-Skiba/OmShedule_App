@@ -7,11 +7,8 @@ import 'screens/calendar_picker_screen.dart';
 import 'screens/schedule_screen.dart';
 import 'screens/select_screen.dart';
 import 'screens/maps_screen.dart';
-import 'screens/profile_screen.dart';
-import 'screens/chat_screen.dart';
+import 'screens/tasks_screen.dart';
 import 'screens/settings_screen.dart';
-import 'screens/lecture_notes_screen.dart';
-import 'screens/auth_screen.dart';
 
 /// Плавный переход между вкладками (fade).
 CustomTransitionPage<void> _fadePage(Widget child, GoRouterState state) {
@@ -42,15 +39,6 @@ final GoRouter appRouter = GoRouter(
           pageBuilder: (context, state) =>
               _fadePage(const ScheduleScreen(), state),
           routes: [
-            // GoRoute(
-            //   path: 'filter',
-            //   pageBuilder: (context, state) {
-            //     final extra = state.extra as FilterResult?;
-            //     return MaterialPage<void>(
-            //       child: FilterScreen(initial: extra ?? const FilterResult()),
-            //     );
-            //   },
-            // ),
             GoRoute(
               path: 'select-group',
               pageBuilder: (context, state) {
@@ -60,7 +48,8 @@ final GoRouter appRouter = GoRouter(
                   child: SelectScreen(
                     type: SelectType.group,
                     title: 'Выберите группу',
-                    items: ScheduleData.getgroups.keys.toList(),              selectedId: selected,
+                    items: ScheduleData.groups,
+                    selectedId: selected,
                   ),
                 );
               },
@@ -74,7 +63,7 @@ final GoRouter appRouter = GoRouter(
                   child: SelectScreen(
                     type: SelectType.teacher,
                     title: 'Выберите преподавателя',
-                    items: ScheduleData.getpersons.keys.toList(),
+                    items: ScheduleData.persons,
                     selectedId: selected,
                   ),
                 );
@@ -99,7 +88,7 @@ final GoRouter appRouter = GoRouter(
                   child: SelectScreen(
                     type: SelectType.room,
                     title: 'Выберите аудиторию',
-                    items: ScheduleData.getauditorium.keys.toList(),
+                    items: ScheduleData.auditoriums,
                     selectedId: selected,
                   ),
                 );
@@ -113,19 +102,9 @@ final GoRouter appRouter = GoRouter(
               _fadePage(const MapsScreen(), state),
         ),
         GoRoute(
-          path: '/notes',
+          path: '/tasks',
           pageBuilder: (context, state) =>
-              _fadePage(const LectureNotesScreen(), state),
-        ),
-        GoRoute(
-          path: '/profile',
-          pageBuilder: (context, state) =>
-              _fadePage(const ProfileScreen(), state),
-        ),
-        GoRoute(
-          path: '/chat',
-          pageBuilder: (context, state) =>
-              _fadePage(const ChatScreen(), state),
+              _fadePage(const TasksScreen(), state),
         ),
       ],
     ),
@@ -133,11 +112,6 @@ final GoRouter appRouter = GoRouter(
       path: '/settings',
       pageBuilder: (context, state) =>
           _fadePage(const SettingsScreen(), state),
-    ),
-    GoRoute(
-      path: '/auth',
-      pageBuilder: (context, state) =>
-          _fadePage(const AuthScreen(), state),
     ),
   ],
 );

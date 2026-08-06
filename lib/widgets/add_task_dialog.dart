@@ -1,6 +1,8 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 
 import '../constants/app_constants.dart';
+import '../core/utils/platform_utils.dart';
 import '../core/services/task_service.dart';
 import '../models/personal_task.dart';
 import 'app_snackbar.dart';
@@ -169,19 +171,27 @@ class _AddTaskDialogState extends State<AddTaskDialog> {
                     ),
                   ),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _save,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: theme.colorScheme.onPrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: const Text('Добавить'),
-                    ),
+                  Expanded( // iOS
+                    child: isIOS
+                        ? CupertinoButton(
+                            onPressed: _save,
+                            color: theme.colorScheme.primary,
+                            borderRadius: BorderRadius.circular(12),
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            child: const Text('Добавить', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                          )
+                        : ElevatedButton(
+                            onPressed: _save,
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: theme.colorScheme.primary,
+                              foregroundColor: theme.colorScheme.onPrimary,
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Добавить'),
+                          ),
                   ),
                 ],
               ),

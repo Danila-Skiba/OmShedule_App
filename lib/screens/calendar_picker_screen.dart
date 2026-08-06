@@ -1,8 +1,10 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../constants/app_constants.dart';
+import '../core/utils/platform_utils.dart';
 import '../core/utils/week_service.dart';
 
 /// Экран выбора даты через календарь.
@@ -20,11 +22,23 @@ class CalendarPickerScreen extends StatefulWidget {
 class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
   late DateTime _focusedDay;
   DateTime? _selectedDay;
+  late final DateTime _firstDay;
+  late final DateTime _lastDay;
 
   @override
   void initState() {
     super.initState();
-    final init = widget.initialDate ?? DateTime.now();
+    final now = DateTime.now();
+    final init = widget.initialDate ?? now;
+
+    // Окно календаря должно включать и сегодня, и выбранную в расписании дату
+    // (расписание можно листать сколь угодно далеко). Иначе focusedDay выйдет
+    // за пределы [firstDay, lastDay] и TableCalendar упадёт на ассерте.
+    final lower = init.isBefore(now) ? init : now;
+    final upper = init.isAfter(now) ? init : now;
+    _firstDay = DateTime(lower.year, lower.month - 2, 1);
+    _lastDay = DateTime(upper.year, upper.month + 4, 0); // последний день (месяц + 3)
+
     _focusedDay = init;
     _selectedDay = init;
   }
@@ -48,10 +62,11 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
     final theme = Theme.of(context);
 
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Выбор даты'),
+      appBar: buildAppBar( // iOS
+        context: context,
+        title: 'Выбор даты',
         leading: IconButton(
-          icon: const Icon(Icons.close),
+          icon: Icon(isIOS ? CupertinoIcons.xmark : Icons.close), // iOS
           onPressed: () => context.pop(),
         ),
       ),
@@ -71,8 +86,8 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
               ),
 
               
-              firstDay: DateTime(DateTime.now().year, DateTime.now().month - 2, 1),
-              lastDay: DateTime(DateTime.now().year, DateTime.now().month + 3, 31),
+              firstDay: _firstDay,
+              lastDay: _lastDay,
               focusedDay: _focusedDay,
               selectedDayPredicate: (day) =>
                   _selectedDay != null &&
@@ -108,24 +123,36 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
             ),
             Padding(
               padding: const EdgeInsets.all(AppConstants.spacingLg),
-              child: TextButton(
-                  onPressed: _onConfirm,
-                  style: ElevatedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(AppConstants.radiusMd),
-                    ),
-                  ),
-                  child: Text(
-                    'Выбрать дату',
-                    style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
-                ),
-                    ),
-                ),
-              )
+              child: SizedBox( // iOS
+                width: double.infinity,
+                height: 48,
+                child: isIOS
+                    ? CupertinoButton(
+                        onPressed: _onConfirm,
+                        color: theme.colorScheme.primary,
+                        borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+                        padding: EdgeInsets.zero,
+                        child: const Text('Выбрать дату', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: CupertinoColors.white)),
+                      )
+                    : TextButton(
+                        onPressed: _onConfirm,
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppConstants.radiusMd),
+                          ),
+                        ),
+                        child: Text(
+                          'Выбрать дату',
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.primary,
+                          ),
+                        ),
+                      ),
+              ),
+            )
           ],
         ),
       ),

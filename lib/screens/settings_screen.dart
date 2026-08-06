@@ -112,38 +112,12 @@ static const _accentOptions = [
                     color: theme.colorScheme.primary,
                   ),
                 ),
-                const SizedBox(height: 8),
-                isIOS // iOS
-                    ? SizedBox(
-                        width: double.infinity,
-                        child: CupertinoSlidingSegmentedControl<ThemeMode>(
-                          groupValue: themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light,
-                          children: const {
-                            ThemeMode.light: Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 12),
-                              child: Text('Светлая'),
-                            ),
-                            ThemeMode.dark: Padding(
-                              padding: EdgeInsets.symmetric(horizontal: 12),
-                              child: Text('Тёмная'),
-                            ),
-                          },
-                          onValueChanged: (ThemeMode? mode) {
-                            if (mode != null) themeNotifier.setThemeMode(mode);
-                          },
-                        ),
-                      )
-                    : SegmentedButton<ThemeMode>(
-                        segments: const [
-                          ButtonSegment(value: ThemeMode.light, label: Text('Светлая'), icon: Icon(Icons.light_mode_rounded)),
-                          ButtonSegment(value: ThemeMode.dark, label: Text('Тёмная'), icon: Icon(Icons.dark_mode_rounded)),
-                        ],
-                        selected: {themeMode == ThemeMode.dark ? ThemeMode.dark : ThemeMode.light},
-                        onSelectionChanged: (Set<ThemeMode> s) {
-                          themeNotifier.setThemeMode(s.first);
-                        },
-                      ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
+                _ThemeToggle(
+                  mode: themeMode,
+                  onChanged: themeNotifier.setThemeMode,
+                ),
+                const SizedBox(height: 20),
                 Text(
                   'Акцентный цвет',
                   style: TextStyle(
@@ -392,21 +366,134 @@ static const _accentOptions = [
   Widget _buildAppInfo() {
     final theme = Theme.of(context);
     return Center(
-      child: Column(
+      child: Text(
+        AppStrings.appName,
+        style: theme.textTheme.bodySmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+}
+
+/// Переключатель темы «Светлая / Тёмная» в стиле приложения:
+/// скользящая акцентная пилюля с иконками.
+class _ThemeToggle extends StatelessWidget {
+  final ThemeMode mode;
+  final ValueChanged<ThemeMode> onChanged;
+
+  const _ThemeToggle({required this.mode, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = theme.brightness == Brightness.dark;
+    final primary = theme.colorScheme.primary;
+    final darkSelected = mode == ThemeMode.dark;
+
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: isDark
+            ? Colors.white.withValues(alpha: 0.06)
+            : primary.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isDark
+              ? Colors.white.withValues(alpha: 0.08)
+              : primary.withValues(alpha: 0.10),
+        ),
+      ),
+      child: Stack(
         children: [
-          Text(
-            AppStrings.appName,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          // Акцентная пилюля под выбранной темой
+          AnimatedAlign(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            alignment:
+                darkSelected ? Alignment.centerRight : Alignment.centerLeft,
+            child: FractionallySizedBox(
+              widthFactor: 0.5,
+              heightFactor: 1,
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [primary, primary.withValues(alpha: 0.82)],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                  boxShadow: [
+                    BoxShadow(
+                      color: primary.withValues(alpha: 0.28),
+                      blurRadius: 10,
+                      offset: const Offset(0, 3),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
-          Text(
-            'Версия ${AppStrings.appVersion}',
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
+          // Positioned.fill — иначе Row прижимается к верху Stack
+          // и подписи оказываются выше центра пилюли
+          Positioned.fill(
+            child: Row(
+              children: [
+                _option(
+                  context: context,
+                  label: 'Светлая',
+                  icon: isIOS ? CupertinoIcons.sun_max_fill : Icons.light_mode_rounded,
+                  selected: !darkSelected,
+                  onTap: () => onChanged(ThemeMode.light),
+                ),
+                _option(
+                  context: context,
+                  label: 'Тёмная',
+                  icon: isIOS ? CupertinoIcons.moon_fill : Icons.dark_mode_rounded,
+                  selected: darkSelected,
+                  onTap: () => onChanged(ThemeMode.dark),
+                ),
+              ],
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _option({
+    required BuildContext context,
+    required String label,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final color = selected
+        ? Colors.white
+        : theme.colorScheme.onSurface.withValues(alpha: 0.55);
+
+    return Expanded(
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 260),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+            color: color,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, size: 16, color: color),
+              const SizedBox(width: 6),
+              Text(label),
+            ],
+          ),
+        ),
       ),
     );
   }

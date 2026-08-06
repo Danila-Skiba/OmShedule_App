@@ -1,5 +1,7 @@
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
+import '../core/utils/platform_utils.dart';
 import '../data/mock_data.dart';
 import '../models/building.dart';
 
@@ -10,9 +12,10 @@ class MapsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final currentBuilding = MockData.buildings[2]; // Корпус 3
+    final theme = Theme.of(context);
 
     return ColoredBox(
-      color: AppColors.background,
+      color: theme.scaffoldBackgroundColor, // iOS — theme-aware
       child: CustomScrollView(
         slivers: [
           SliverToBoxAdapter(child: _buildHeader(currentBuilding)),
