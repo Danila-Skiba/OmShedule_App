@@ -25,6 +25,7 @@ dependencies:
   google_fonts: ^6.1.0
   html: ^0.15.4
   enough_convert: ^1.6.0
+  adaptive_platform_ui: 0.1.111
 
 dev_dependencies:
   flutter_launcher_icons: ^0.13.1
