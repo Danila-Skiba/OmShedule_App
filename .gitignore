@@ -51,6 +51,5 @@ app.*.map.json
 
 CLAUDE.md
 
-packages/
 test/
 macos/
