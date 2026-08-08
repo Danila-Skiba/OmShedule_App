@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 import '../../models/week_period.dart';
 
 /// Сервис для работы с неделями расписания.
@@ -7,9 +5,6 @@ import '../../models/week_period.dart';
 /// Все даты нормализованы в local timezone (без времени для сравнений).
 class WeekService {
   WeekService._();
-
-  static final _dateFormat = DateFormat('d MMMM', 'ru');
-  static final _dateFormatDifferentMonths = DateFormat('d MMM', 'ru');
 
   /// Сокращения дней недели: Пн, Вт, Ср, Чт, Пт, Сб, Вс
   static const weekDayLabels = ['ПН', 'ВТ', 'СР', 'ЧТ', 'ПТ', 'СБ', 'ВС'];

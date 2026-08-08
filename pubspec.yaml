@@ -22,10 +22,16 @@ dependencies:
   url_launcher: ^6.2.5
   cached_network_image: ^3.2.3
   shared_preferences: ^2.2.2
-  google_fonts: ^6.1.0
   html: ^0.15.4
   enough_convert: ^1.6.0
   adaptive_platform_ui: 0.1.111
+
+# Вендоренный форк 0.1.111: в нативном сегментированном контроле на iOS 26
+# тап по неактивному сегменту не анимировался. Причина и правки — в
+# packages/adaptive_platform_ui/FORK.md. Убрать, когда починят в апстриме.
+dependency_overrides:
+  adaptive_platform_ui:
+    path: packages/adaptive_platform_ui
 
 dev_dependencies:
   flutter_launcher_icons: ^0.13.1
@@ -43,3 +49,18 @@ flutter:
   assets:
     - assets/icons/
     - assets/data/
+
+  # Inter лежит в ассетах, а не тянется через google_fonts с fonts.gstatic.com:
+  # рантайм-загрузка означала запрос к Google на старте и системный шрифт
+  # вместо Inter при первом запуске без сети.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-400.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-500.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-600.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-700.ttf
+          weight: 700

@@ -15,9 +15,12 @@ export 'app_button.dart';
 export 'app_icons.dart';
 export 'app_list_tile.dart';
 export 'app_scaffold.dart';
+export 'app_segmented_control.dart';
 export 'app_snack_bar.dart';
 export 'app_switch.dart';
+export 'app_tab_bar.dart';
 export 'app_text_field.dart';
+export 'app_toolbar_leading.dart';
 
 /// Определение платформы и версии iOS (`PlatformInfo.isIOS26OrHigher()`).
 export 'package:adaptive_platform_ui/adaptive_platform_ui.dart'

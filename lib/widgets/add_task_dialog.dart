@@ -5,7 +5,7 @@ import '../constants/app_constants.dart';
 import '../core/utils/platform_utils.dart';
 import '../core/services/task_service.dart';
 import '../models/personal_task.dart';
-import 'app_snackbar.dart';
+import '../ui/adaptive/adaptive_exports.dart';
 
 /// Форма добавления личной задачи.
 /// Поля: название, время (обязательное), аудитория (опционально).
@@ -56,7 +56,7 @@ class _AddTaskDialogState extends State<AddTaskDialog> {
     if (!_validate()) return;
     final title = _titleController.text.trim();
     if (title.isEmpty) {
-      AppSnackBar.show(context, message: 'Введите название задачи', icon: Icons.edit_outlined);
+      AppSnackBar.show(context, message: 'Введите название задачи');
       return;
     }
     final task = PersonalTask(
@@ -95,7 +95,7 @@ class _AddTaskDialogState extends State<AddTaskDialog> {
     final theme = Theme.of(context);
 
     return Dialog(
-      backgroundColor: theme.dialogBackgroundColor,
+      backgroundColor: theme.dialogTheme.backgroundColor ?? theme.colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppConstants.radiusLg),
       ),

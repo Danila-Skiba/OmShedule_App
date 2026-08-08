@@ -1,14 +1,21 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:go_router/go_router.dart';
+import 'package:flutter/services.dart';
 import 'package:table_calendar/table_calendar.dart';
 
 import '../constants/app_constants.dart';
 import '../core/utils/platform_utils.dart';
+import '../ui/adaptive/adaptive_exports.dart';
 import '../core/utils/week_service.dart';
 
 /// Экран выбора даты через календарь.
 /// При выборе даты возвращает [DateTime] через Navigator.pop(context, selectedDate).
+///
+/// Открывается двумя способами: маршрутом `/schedule/calendar` (расписание) и
+/// императивным `Navigator.push` (экран задачи). Поэтому закрывается через
+/// `Navigator.pop`, а не `context.pop`: go_router доводит результат до
+/// `context.push` и в этом случае (`_completeRouteMatch` в его делегате),
+/// а `context.pop` на маршруте вне go_router упал бы на ассерте.
 class CalendarPickerScreen extends StatefulWidget {
   /// Начальная дата для выделения в календаре.
   final DateTime? initialDate;
@@ -45,6 +52,7 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
 
   void _onDaySelected(DateTime selected, DateTime focused) {
     if (!WeekService.isValidDate(selected)) return;
+    HapticFeedback.selectionClick();
     setState(() {
       _selectedDay = selected;
       _focusedDay = focused;
@@ -53,7 +61,7 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
 
   void _onConfirm() {
     if (_selectedDay != null) {
-      context.pop<DateTime>(_selectedDay);
+      Navigator.of(context).pop<DateTime>(_selectedDay);
     }
   }
 
@@ -61,19 +69,26 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
 
-    return Scaffold(
-      appBar: buildAppBar( // iOS
-        context: context,
+    return AppScaffold(
+      appBar: const AppAppBar(
         title: 'Выбор даты',
-        leading: IconButton(
-          icon: Icon(isIOS ? CupertinoIcons.xmark : Icons.close), // iOS
-          onPressed: () => context.pop(),
-        ),
+        useNativeToolbar: true,
+        leading: AppToolbarLeading.close(),
       ),
+      // Прокручивается весь экран, а не одна сетка: кнопка должна идти сразу
+      // под календарём, а не висеть у нижней кромки. При этом на невысоком
+      // экране и с крупным системным шрифтом ничего не обрезается — шесть
+      // строк месяца просто уезжают в прокрутку вместе с кнопкой.
       body: SafeArea(
-        child: Column(
-          children: [
-            TableCalendar<dynamic>(
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+                TableCalendar<dynamic>(
+              // Высота строки с «пн вт ср…» по умолчанию 16 pt — подписи
+              // обрезались снизу даже при обычном шрифте, а при увеличенном
+              // от них оставалась половина.
+              daysOfWeekHeight: 28,
               daysOfWeekStyle: DaysOfWeekStyle(
                 weekdayStyle: TextStyle(
                   color: theme.colorScheme.primary,
@@ -85,7 +100,7 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
                 ),
               ),
 
-              
+
               firstDay: _firstDay,
               lastDay: _lastDay,
               focusedDay: _focusedDay,
@@ -120,7 +135,7 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
                   color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
                 ),
               ),
-            ),
+                ),
             Padding(
               padding: const EdgeInsets.all(AppConstants.spacingLg),
               child: SizedBox( // iOS
@@ -152,8 +167,12 @@ class _CalendarPickerScreenState extends State<CalendarPickerScreen> {
                         ),
                       ),
               ),
-            )
-          ],
+              ),
+
+              // Запас снизу: на iOS 26 нижняя навигация лежит поверх контента.
+              SizedBox(height: MediaQuery.of(context).padding.bottom + 96),
+            ],
+          ),
         ),
       ),
     );

@@ -119,10 +119,4 @@ class Lesson {
     }
   }
 
-  static LessonStatus _lessonStatusFromString(String s) {
-    return LessonStatus.values.firstWhere(
-      (e) => e.name == s,
-      orElse: () => LessonStatus.active,
-    );
-  }
 }

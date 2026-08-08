@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../constants/app_colors.dart';
 
 /// Линейный прогресс
 class AppProgress extends StatelessWidget {
@@ -14,11 +13,15 @@ class AppProgress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final clamped = value.clamp(0.0, 100.0);
     return Container(
       height: height,
       decoration: BoxDecoration(
-        color: AppColors.primaryLight.withValues(alpha: 0.2),
+        // Подложка нейтральная. Раньше здесь был синий `primaryLight` из
+        // палитры по умолчанию: он не следовал за акцентным цветом и в тёмной
+        // теме читался как вторая, синяя полоса рядом с розовой заливкой.
+        color: theme.colorScheme.onSurface.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
       ),
       child: LayoutBuilder(
@@ -33,7 +36,7 @@ class AppProgress extends StatelessWidget {
                 width: width,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary,
+                    color: theme.colorScheme.primary,
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),

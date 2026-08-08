@@ -28,9 +28,33 @@ class ThemeNotifier extends ChangeNotifier {
     if (_accentColor?.toARGB32() == color?.toARGB32()) return;
     _accentColor = color;
     SettingsService.setAccentColor(color);
+    // Акцент вшит в обе темы — кеш под старый цвет больше не годится.
+    _cachedLight = null;
+    _cachedDark = null;
     notifyListeners();
   }
 
-  ThemeData lightTheme() => AppTheme.light(accentColor: _accentColor);
-  ThemeData darkTheme() => AppTheme.dark(accentColor: _accentColor);
+  // ---------------------------------------------------------------------------
+  // Кеш тем
+  // ---------------------------------------------------------------------------
+  //
+  // `AppTheme.light/dark` внутри создают `ThemeData(useMaterial3: true)` —
+  // конструктор недешёвый (типографика, дефолты всех под-тем), а поверх идёт
+  // `copyWith` ещё с десятком тем. Обе строились заново на каждый build
+  // `Consumer<ThemeNotifier>` в main.dart, то есть на каждый тап по кружку
+  // акцентного цвета: два полных `ThemeData` плюс перестроение всего дерева,
+  // потому что `Theme.of` возвращал новый экземпляр. Отсюда и заметная
+  // задержка отрисовки на экране настроек.
+  //
+  // Теперь тема строится один раз на значение акцента и переживает любое
+  // число перестроений; кеш сбрасывается только при смене цвета.
+
+  ThemeData? _cachedLight;
+  ThemeData? _cachedDark;
+
+  ThemeData lightTheme() =>
+      _cachedLight ??= AppTheme.light(accentColor: _accentColor);
+
+  ThemeData darkTheme() =>
+      _cachedDark ??= AppTheme.dark(accentColor: _accentColor);
 }

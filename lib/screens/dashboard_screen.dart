@@ -2,10 +2,10 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:go_router/go_router.dart';
 import 'package:omstu_schedule/core/services/news_service.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../constants/app_colors.dart';
 import '../data/building_data.dart';
 import '../data/schedule_data.dart';
@@ -14,8 +14,7 @@ import '../widgets/base_container.dart';
 import '../models/lesson.dart';
 import '../models/news.dart';
 import '../models/personal_task.dart';
-import '../widgets/app_progress.dart';
-import '../widgets/app_snackbar.dart';
+import '../ui/adaptive/adaptive_exports.dart';
 import '../core/services/settings_service.dart';
 import '../core/services/schedule_cache_service.dart';
 import '../core/services/schedule_repository.dart';
@@ -29,7 +28,7 @@ const _monthNames = [
 ];
 const _weekDayNames = ['понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота', 'воскресенье'];
 
-/// Главная страница TODO: подтягивание текущего расписания с помощью API или кеширования
+/// Главная страница: панель «Сегодня» с парами и задачами плюс лента новостей.
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
 
@@ -41,7 +40,8 @@ class DashboardScreen extends StatefulWidget {
 /// Раздел новостей на сайте вуза — открывается по кнопке «Все».
 const String _newsSiteUrl = 'https://www.omgtu.ru/news/';
 
-class _DashboardScreenState extends State<DashboardScreen> {
+class _DashboardScreenState extends State<DashboardScreen>
+    with WidgetsBindingObserver {
   List<News> _news = [];
   bool _isLoading = true;
 
@@ -54,19 +54,65 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
+    // На iOS «запуск» приложения почти всегда возврат из фона, а не холодный
+    // старт: initState больше не вызывается, и без слушателя жизненного цикла
+    // лента застывала на том, что загрузилось при первой установке.
+    WidgetsBinding.instance.addObserver(this);
+    // Задачи меняются и на своей вкладке: без подписки добавленная там задача
+    // не появлялась в панели «Сегодня», пока приложение не уйдёт в фон и не
+    // вернётся.
+    TaskService.instance.addListener(_onTasksChanged);
+    _loadData();
+    _loadTodayData();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    TaskService.instance.removeListener(_onTasksChanged);
+    super.dispose();
+  }
+
+  void _onTasksChanged() {
+    if (!mounted) return;
+    // Расписание перезагружать незачем — оно не изменилось.
+    _loadTodayTasks();
+  }
+
+  Future<void> _loadTodayTasks() async {
+    try {
+      final tasks = await TaskService.instance.loadTasksForDate(
+        _showingTomorrow
+            ? DateTime.now().add(const Duration(days: 1))
+            : DateTime.now(),
+      );
+      if (mounted) setState(() => _todayTasks = tasks);
+    } catch (e) {
+      debugPrint('Dashboard: не удалось перечитать задачи: $e');
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state != AppLifecycleState.resumed) return;
+    // Решение «идти ли в сеть» принимает NewsService; здесь просто повод.
     _loadData();
     _loadTodayData();
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
+    return AppScaffold(
       appBar: _buildAppBar(context),
       body:  CustomScrollView(
         slivers: [
+          // Автообновление ограничено часом, поэтому нужен ручной способ
+          // подтянуть ленту прямо сейчас.
+          if (isIOS) // iOS
+            CupertinoSliverRefreshControl(
+              onRefresh: () => _loadData(forceRefresh: true),
+            ),
               SliverList(
               delegate: SliverChildListDelegate([
                 const SizedBox(height: 8),
@@ -82,16 +128,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool forceRefresh = false}) async {
     if (!mounted) return;
-    setState(() => _isLoading = true);
 
-    final result = await NewsService.instance.getNews();
+    // Сначала мгновенно показываем сохранённую ленту — скелетоны остаются
+    // только для первого запуска, когда кеша ещё нет.
+    final cached = await NewsService.instance.cachedNews();
+    if (!mounted) return;
+    if (cached.isNotEmpty) {
+      setState(() {
+        _news = cached;
+        _isLoading = false;
+      });
+    } else {
+      setState(() => _isLoading = true);
+    }
+
+    final result = await NewsService.instance.getNews(
+      forceRefresh: forceRefresh,
+    );
 
     if (!mounted) return;
     setState(() {
       _isLoading = false;
-      _news = result.error != null ? [] : result.news;
+      // При ошибке сети сервис уже вернул устаревший кеш; затирать показанную
+      // ленту пустым списком нельзя — иначе офлайн даёт «Новостей пока нет».
+      if (result.error == null) {
+        _news = result.news;
+      } else if (_news.isEmpty) {
+        _news = cached;
+      }
     });
   }
 
@@ -99,8 +165,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
     if (!mounted) return;
     setState(() => _scheduleLoading = true);
 
+    // Всё тело — под try/finally: любое исключение по пути (чтение задач,
+    // разбор времени пары) раньше проскакивало мимо setState, и панель
+    // «Сегодня» оставалась в состоянии загрузки навсегда.
+    List<PersonalTask> tasks = const [];
+    try {
+      tasks = await TaskService.instance.loadTasksForDate(DateTime.now());
+    } catch (e) {
+      debugPrint('Dashboard: не удалось прочитать задачи: $e');
+    }
+
     final now = DateTime.now();
-    final tasks = await TaskService.instance.loadTasksForDate(now);
 
     // Определяем фильтры
     String? groupIds;
@@ -123,7 +198,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
           groupIds = SettingsService.getLastGroupId();
           break;
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('Dashboard: не удалось прочитать сохранённый фильтр: $e');
+    }
 
     // Справочники обновляются — сохранённое значение могло исчезнуть
     if (!ScheduleData.hasGroup(groupIds)) groupIds = null;
@@ -166,7 +243,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
             isTomorrow = true;
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        // Панель просто останется без пар: расписание грузится и на своей
+        // вкладке, а падать из-за него главная не должна.
+        debugPrint('Dashboard: расписание на сегодня не загружено: $e');
+      }
     }
 
     if (!mounted) return;
@@ -176,6 +257,37 @@ class _DashboardScreenState extends State<DashboardScreen> {
       _showingTomorrow = isTomorrow;
       _scheduleLoading = false;
     });
+  }
+
+  /// Отметить задачу выполненной / вернуть в работу прямо с главной.
+  ///
+  /// Список обновляется сразу, не дожидаясь записи файла: нажатие должно
+  /// отзываться в том же кадре. Если запись не удалась — возвращаем прежнее
+  /// состояние, иначе галочка врала бы до следующей загрузки.
+  Future<void> _toggleTaskCompleted(PersonalTask task) async {
+    final index = _todayTasks.indexWhere((t) => t.id == task.id);
+    if (index < 0) return;
+
+    final previous = _todayTasks[index];
+    HapticFeedback.lightImpact();
+    setState(() {
+      _todayTasks = List<PersonalTask>.from(_todayTasks)
+        ..[index] = previous.copyWith(completed: !previous.completed);
+    });
+
+    try {
+      await TaskService.instance.toggleCompleted(task.id);
+    } catch (e) {
+      debugPrint('Dashboard: не удалось сохранить отметку задачи: $e');
+      if (!mounted) return;
+      final rollbackIndex = _todayTasks.indexWhere((t) => t.id == task.id);
+      if (rollbackIndex < 0) return;
+      setState(() {
+        _todayTasks = List<PersonalTask>.from(_todayTasks)
+          ..[rollbackIndex] = previous;
+      });
+      AppSnackBar.error(context, 'Не удалось сохранить отметку');
+    }
   }
 
   Future<List<Lesson>> _loadLessonsForDate(DateTime date, {
@@ -203,13 +315,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return lessons;
   }
 
-  PreferredSizeWidget _buildAppBar(BuildContext context) {
-    return buildAppBar( // iOS
-      context: context,
+  AppAppBar _buildAppBar(BuildContext context) {
+    return AppAppBar(
       title: 'Расписание ОмГТУ',
+      useNativeToolbar: true,
       actions: [
-        IconButton(
-          icon: Icon(isIOS ? CupertinoIcons.ellipsis : Icons.menu), // iOS
+        AppAppBarAction(
+          iosSymbol: AppIcons.more.symbol,
+          icon: isIOS ? CupertinoIcons.ellipsis : AppIcons.more.icon, // iOS
           onPressed: () => _showAppBarPopup(context),
         ),
       ],
@@ -258,18 +371,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   constraints: const BoxConstraints(maxWidth: 280),
                   decoration: BoxDecoration(
                     color: isDark
-                        ? const Color(0xFF2A2A2E).withOpacity(0.85)
-                        : Colors.white.withOpacity(0.88),
+                        ? const Color(0xFF2A2A2E).withValues(alpha: 0.85)
+                        : Colors.white.withValues(alpha: 0.88),
                     borderRadius: BorderRadius.circular(AppConstants.radiusLg),
                     border: Border.all(
                       color: isDark
-                          ? Colors.white.withOpacity(0.12)
-                          : Colors.black.withOpacity(0.06),
+                          ? Colors.white.withValues(alpha: 0.12)
+                          : Colors.black.withValues(alpha: 0.06),
                       width: 0.5,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(isDark ? 0.4 : 0.12),
+                        color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
                         blurRadius: 25,
                         offset: const Offset(0, 8),
                         spreadRadius: -4,
@@ -293,210 +406,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ),
             ),
           ),
-        ),
-      ),
-    );
-  }
-
-  void _logout(BuildContext context) {
-    if (context.mounted) {
-      AppSnackBar.success(context, 'Выход выполнен');
-    }
-  }
-
-  Widget _buildQuickActions(BuildContext context, Lesson? nextLesson) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        const count = 4;
-        const spacing = 8.0;
-        const totalSpacing = spacing * (count - 1);
-        final itemWidth = (constraints.maxWidth - totalSpacing) / count;
-        final itemHeight = itemWidth / 0.85;
-        return SizedBox(
-          height: itemHeight,
-          child: Row(
-            children: [
-              Expanded(
-                child: _QuickActionCard(
-                  icon: Icons.access_time_rounded,
-                  iconColor: AppColors.primaryLight,
-                  title: 'Сегодня',
-                  subtitle: nextLesson?.timeStart ?? '08:30',
-                  onTap: () => context.go('/schedule'),
-                ),
-              ),
-              const SizedBox(width: spacing),
-              Expanded(
-                child: _QuickActionCard(
-                  icon: Icons.groups_rounded,
-                  iconColor: AppColors.success,
-                  title: 'Группа',
-                  subtitle: 'ИУ5-31б',
-                  onTap: () => context.go('/schedule'),
-                ),
-              ),
-              const SizedBox(width: spacing),
-              Expanded(
-                child: _QuickActionCard(
-                  icon: Icons.person_rounded,
-                  iconColor: AppColors.warning,
-                  title: 'Препод.',
-                  subtitle: 'Петров В.В.',
-                  onTap: () => context.go('/schedule'),
-                ),
-              ),
-              const SizedBox(width: spacing),
-              Expanded(
-                child: _QuickActionCard(
-                  icon: Icons.location_on_rounded,
-                  iconColor: AppColors.error,
-                  title: 'Карты',
-                  subtitle: '🗺️',
-                  onTap: () => context.go('/maps'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildStatsRow(int completedTasks, int totalTasks, int minutesToNext) {
-    return Padding(
-      padding: const EdgeInsetsGeometry.all(16),
-      child: Row(
-        children: [
-          const Expanded(
-            child: BaseContainer(
-              padding: EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('Посещено пар', style: _subtitleStyle),
-                  SizedBox(height: 4),
-                  Text('14/18', style: _boldPrimaryStyle),
-                  SizedBox(height: 8),
-                  AppProgress(value: 77.8, height: 4),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: BaseContainer(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Задачи', style: _subtitleStyle),
-                  const SizedBox(height: 4),
-                  Text('$completedTasks/$totalTasks', style: _boldSuccessStyle),
-                  const SizedBox(height: 8),
-                  AppProgress(value: totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0, height: 4),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: BaseContainer(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('До следующей', style: _subtitleStyle),
-                  const SizedBox(height: 4),
-                  Text('$minutesToNextм', style: _boldWarningStyle),
-                  const SizedBox(height: 8),
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      return Container(
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AppColors.warning.withValues(alpha: 0.2),
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Container(
-                            width: constraints.maxWidth * 0.5,
-                            decoration: BoxDecoration(
-                              color: AppColors.warning,
-                              borderRadius: BorderRadius.circular(2),
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildScheduleSection(BuildContext context, List<Lesson> todayLessons) {
-    final theme = Theme.of(context);
-    final now = DateTime.now();
-    final dateStr = '${now.day} ${_monthNames[now.month - 1]}, ${_weekDayNames[now.weekday - 1]}';
-    return Padding(
-      padding: const EdgeInsetsGeometry.symmetric(horizontal: 16), 
-      child: BaseContainer(
-        padding: const EdgeInsets.all(AppConstants.spacingLg),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Расписание на сегодня',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              dateStr,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurface.withValues(alpha: 0.7),
-                fontSize: 13,
-              ),
-            ),
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: BoxConstraints(
-                maxHeight: MediaQuery.sizeOf(context).height * 0.35,
-              ),
-              child: ListView.separated(
-                shrinkWrap: true,
-                physics: const ClampingScrollPhysics(),
-                itemCount: todayLessons.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) => _ScheduleRow(
-                  lesson: todayLessons[index],
-                  index: index,
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextButton.icon(
-              onPressed: () => context.go('/schedule'),
-              icon: Icon(Icons.arrow_forward_ios_rounded, size: 14, color: theme.colorScheme.primary),
-              label: Text(
-                'Показать всё расписание',
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: theme.colorScheme.primary,
-                ),
-              ),
-            ),
-          ],
         ),
       ),
     );
@@ -656,90 +565,149 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
             const SizedBox(height: 16),
 
-            if (_scheduleLoading) // iOS
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 24),
-                  child: buildLoader(radius: 12, strokeWidth: 2.2, color: primary),
-                ),
-              )
-            else if (!hasContent)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.event_available_rounded,
-                        size: 40,
-                        color: onSurface.withValues(alpha: 0.2),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        'На ${ _showingTomorrow ? "завтра" : "сегодня" } ничего не запланировано',
-                        style: TextStyle(
-                          fontSize: 13,
-                          color: onSurface.withValues(alpha: 0.45),
-                        ),
-                      ),
-                    ],
+            // Загрузка → «ничего не запланировано» → содержимое сменяют друг
+            // друга плавно, а не подменяются в одном кадре. Ключ — только имя
+            // состояния: пока показано содержимое, правки внутри него
+            // (например отметка «выполнено») идут без перекрёстного затухания.
+            // AnimatedSize догоняет высоту панели, иначе карточка прыгала бы.
+            AnimatedSize(
+              duration: const Duration(milliseconds: 250),
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.topCenter,
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 220),
+                switchInCurve: Curves.easeOut,
+                switchOutCurve: Curves.easeIn,
+                child: KeyedSubtree(
+                  key: ValueKey(
+                    _scheduleLoading
+                        ? 'loading'
+                        : hasContent
+                            ? 'content'
+                            : 'empty',
+                  ),
+                  child: _buildTodayPanelBody(
+                    theme: theme,
+                    isDark: isDark,
+                    primary: primary,
+                    onSurface: onSurface,
+                    hasLessons: hasLessons,
+                    hasTasks: hasTasks,
+                    hasContent: hasContent,
                   ),
                 ),
-              )
-            else ...[
-              // Пары — показываем ВСЕ
-              if (hasLessons) ...[
-                Row(
-                  children: [
-                    Icon(Icons.school_rounded, size: 14, color: primary),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Пары (${_todayLessons.length})',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: primary,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ..._buildGroupedLessonTiles(),
-              ],
-
-              // Разделитель
-              if (hasLessons && hasTasks)
-                Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Divider(height: 1, color: theme.dividerColor),
-                ),
-
-              // Задачи — показываем ВСЕ
-              if (hasTasks) ...[
-                Row(
-                  children: [
-                    const Icon(Icons.check_circle_outline_rounded, size: 14, color: AppColors.taskAccent),
-                    const SizedBox(width: 6),
-                    Text(
-                      'Задачи (${_todayTasks.length})',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? const Color(0xFFB49AFF) : AppColors.taskAccent,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ...List.generate(_todayTasks.length, (i) {
-                  final task = _todayTasks[i];
-                  return _TodayTaskTile(task: task);
-                }),
-              ],
-            ],
+              ),
+            ),
           ],
         ),
       ),
+    );
+  }
+
+  /// Содержимое панели «Сегодня» под заголовком: лоадер, заглушка или
+  /// список пар и задач.
+  Widget _buildTodayPanelBody({
+    required ThemeData theme,
+    required bool isDark,
+    required Color primary,
+    required Color onSurface,
+    required bool hasLessons,
+    required bool hasTasks,
+    required bool hasContent,
+  }) {
+    if (_scheduleLoading) {
+      return Center( // iOS
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 24),
+          child: buildLoader(radius: 12, strokeWidth: 2.2, color: primary),
+        ),
+      );
+    }
+
+    if (!hasContent) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 20),
+          child: Column(
+            children: [
+              Icon(
+                Icons.event_available_rounded,
+                size: 40,
+                color: onSurface.withValues(alpha: 0.2),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'На ${_showingTomorrow ? "завтра" : "сегодня"} ничего не запланировано',
+                style: TextStyle(
+                  fontSize: 13,
+                  color: onSurface.withValues(alpha: 0.45),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Пары — показываем ВСЕ
+        if (hasLessons) ...[
+          Row(
+            children: [
+              Icon(Icons.school_rounded, size: 14, color: primary),
+              const SizedBox(width: 6),
+              Text(
+                'Пары (${_todayLessons.length})',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: primary,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ..._buildGroupedLessonTiles(),
+        ],
+
+        // Разделитель
+        if (hasLessons && hasTasks)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Divider(height: 1, color: theme.dividerColor),
+          ),
+
+        // Задачи — показываем ВСЕ
+        if (hasTasks) ...[
+          Row(
+            children: [
+              const Icon(Icons.check_circle_outline_rounded,
+                  size: 14, color: AppColors.taskAccent),
+              const SizedBox(width: 6),
+              Text(
+                'Задачи (${_todayTasks.length})',
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: isDark
+                      ? const Color(0xFFB49AFF)
+                      : AppColors.taskAccent,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          ...List.generate(_todayTasks.length, (i) {
+            final task = _todayTasks[i];
+            return _TodayTaskTile(
+              task: task,
+              onToggleCompleted: () => _toggleTaskCompleted(task),
+            );
+          }),
+        ],
+      ],
     );
   }
 
@@ -793,10 +761,7 @@ Widget _buildNewsSection(List<News> news) {
               color: primary.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(10),
               child: InkWell(
-                onTap: () => launchUrl(
-                  Uri.parse(_newsSiteUrl),
-                  mode: LaunchMode.externalApplication,
-                ),
+                onTap: () => openExternalUrl(_newsSiteUrl),
                 borderRadius: BorderRadius.circular(10),
                 child: Padding(
                   padding:
@@ -876,26 +841,6 @@ Widget _buildNewsSection(List<News> news) {
   );
 }
 
-  static const TextStyle _subtitleStyle = TextStyle(
-    fontSize: 12,
-    color: AppColors.textSecondary,
-  );
-  static const TextStyle _boldPrimaryStyle = TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: AppColors.primary,
-  );
-  static const TextStyle _boldSuccessStyle = TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: AppColors.success,
-  );
-  static const TextStyle _boldWarningStyle = TextStyle(
-    fontSize: 20,
-    fontWeight: FontWeight.bold,
-    color: AppColors.warning,
-  );
-  
 }
 
 class _PopupTile extends StatelessWidget {
@@ -934,149 +879,6 @@ class _PopupTile extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _QuickActionCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  const _QuickActionCard({
-    required this.icon,
-    required this.iconColor,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: AppColors.card,
-      borderRadius: BorderRadius.circular(16),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: iconColor.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(icon, size: 24, color: iconColor),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textPrimary,
-              ),
-            ),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 10,
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-}
-
-class _ScheduleRow extends StatelessWidget {
-  final Lesson lesson;
-  final int index;
-
-  const _ScheduleRow({required this.lesson, this.index = 0});
-
-  @override
-  Widget build(BuildContext context) {
-    Color dotColor = AppColors.success;
-    if (index == 0) dotColor = AppColors.error;
-    if (index == 1) dotColor = AppColors.warning;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-            children: [
-              Text(
-                lesson.timeStart,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  color: dotColor,
-                  shape: BoxShape.circle,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                lesson.timeEnd,
-                style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 1,
-            child: Container(
-              height: 1,
-              color: AppColors.border,
-            ),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            flex: 2,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  lesson.subject?? '',
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textPrimary,
-                  ),
-                ),
-                Text(
-                  '${lesson.teacher} • ${lesson.room}',
-                  style: const TextStyle(fontSize: 12, color: AppColors.textSecondary),
-                ),
-              ],
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -1189,10 +991,7 @@ class _NewsCard extends StatelessWidget {
     final primary = theme.colorScheme.primary;
 
     return GestureDetector(
-      onTap: () => launchUrl(
-        Uri.parse(news.url),
-        mode: LaunchMode.externalApplication,
-      ),
+      onTap: () => openExternalUrl(news.url),
       child: Container(
         margin: const EdgeInsets.only(bottom: 14, top: 2),
         decoration: BoxDecoration(
@@ -1581,7 +1380,11 @@ class _TodayLessonTile extends StatelessWidget {
 /// Плитка задачи в панели «Сегодня» на главной.
 class _TodayTaskTile extends StatelessWidget {
   final PersonalTask task;
-  const _TodayTaskTile({required this.task});
+
+  /// Нажатие по кружку слева — отметка «выполнено».
+  final VoidCallback? onToggleCompleted;
+
+  const _TodayTaskTile({required this.task, this.onToggleCompleted});
 
   @override
   Widget build(BuildContext context) {
@@ -1593,7 +1396,7 @@ class _TodayTaskTile extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.fromLTRB(6, 10, 12, 10),
         decoration: BoxDecoration(
           color: isDark
               ? accent.withValues(alpha: 0.06)
@@ -1605,14 +1408,33 @@ class _TodayTaskTile extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(
-              task.completed
-                  ? Icons.check_circle_rounded
-                  : Icons.radio_button_unchecked_rounded,
-              size: 20,
-              color: task.completed ? AppColors.success : accent,
+            // Зона нажатия шире самой иконки (20 px мало для пальца): отступ
+            // отъедается у внешнего Padding, поэтому плитка не разъезжается.
+            GestureDetector(
+              onTap: onToggleCompleted,
+              behavior: HitTestBehavior.opaque,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  transitionBuilder: (child, animation) => ScaleTransition(
+                    scale: animation,
+                    child: FadeTransition(opacity: animation, child: child),
+                  ),
+                  child: Icon(
+                    task.completed
+                        ? Icons.check_circle_rounded
+                        : Icons.radio_button_unchecked_rounded,
+                    // Ключ по состоянию — иначе AnimatedSwitcher считает иконку
+                    // той же самой и подменяет её без анимации.
+                    key: ValueKey(task.completed),
+                    size: 20,
+                    color: task.completed ? AppColors.success : accent,
+                  ),
+                ),
+              ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 4),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1672,20 +1494,29 @@ class _DashboardLessonSheet extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
     final onSurface = theme.colorScheme.onSurface;
-    final typeColor = _lessonTypeColor(lesson.type, isDark);
     final buildingInfo = BuildingData.findByAuditorium(lesson.room);
 
     Widget sheetContent = Container(
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
       decoration: BoxDecoration(
         color: isDark ? null : theme.cardColor,
+        // В тёмной теме лист лежит поверх размытия и раньше был почти
+        // прозрачным — содержимое под ним просвечивало и сливалось.
+        // Блик сверху оставляем, но подмешиваем его к непрозрачному цвету
+        // карточки, а не кладём голым белым с альфой.
         gradient: isDark
             ? LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.white.withOpacity(0.1),
-                  Colors.white.withOpacity(0.05),
+                  Color.alphaBlend(
+                    Colors.white.withValues(alpha: 0.10),
+                    theme.cardColor,
+                  ),
+                  Color.alphaBlend(
+                    Colors.white.withValues(alpha: 0.05),
+                    theme.cardColor,
+                  ),
                 ],
               )
             : null,
@@ -1693,7 +1524,7 @@ class _DashboardLessonSheet extends StatelessWidget {
         border: isDark
             ? Border(
                 top: BorderSide(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   width: 0.5,
                 ),
               )
@@ -1706,7 +1537,7 @@ class _DashboardLessonSheet extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 20,
                   offset: const Offset(0, -4),
                 ),
@@ -1729,12 +1560,13 @@ class _DashboardLessonSheet extends StatelessWidget {
             ),
           ),
 
-          // Название предмета
+          // Название предмета — обычным текстовым цветом (белым в тёмной теме,
+          // тёмным в светлой), как и в такой же шторке на экране расписания.
           Text(
             lesson.subject,
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
-              color: primary,
+              color: onSurface,
             ),
           ),
           const SizedBox(height: 20),
@@ -1829,7 +1661,7 @@ class _DashboardLessonSheet extends StatelessWidget {
                           color: AppColors.error.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 18),
+                        child: const Icon(Icons.location_on_rounded, color: AppColors.error, size: 18),
                       ),
                       const SizedBox(width: 8),
                       Flexible(
@@ -2009,8 +1841,8 @@ class _DashboardLessonSheet extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.1),
-                      Colors.white.withOpacity(0.05),
+                      Colors.white.withValues(alpha: 0.1),
+                      Colors.white.withValues(alpha: 0.05),
                     ],
                   )
                 : null,
@@ -2018,7 +1850,7 @@ class _DashboardLessonSheet extends StatelessWidget {
             border: isDark
                 ? Border(
                     top: BorderSide(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       width: 0.5,
                     ),
                   )
@@ -2031,7 +1863,7 @@ class _DashboardLessonSheet extends StatelessWidget {
                 ? null
                 : [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 20,
                       offset: const Offset(0, -4),
                     ),
@@ -2073,8 +1905,7 @@ class _DashboardLessonSheet extends StatelessWidget {
                 onTap: () {
                   Navigator.of(ctx).pop();
                   final query = Uri.encodeComponent('Омск, ${info.address}');
-                  launchUrl(Uri.parse('https://2gis.ru/omsk/search/$query'),
-                      mode: LaunchMode.externalApplication);
+                  openExternalUrl('https://2gis.ru/omsk/search/$query');
                 },
               ),
               const SizedBox(height: 10),
@@ -2085,8 +1916,7 @@ class _DashboardLessonSheet extends StatelessWidget {
                 onTap: () {
                   Navigator.of(ctx).pop();
                   final query = Uri.encodeComponent('Омск, ${info.address}');
-                  launchUrl(Uri.parse('https://yandex.ru/maps/?text=$query'),
-                      mode: LaunchMode.externalApplication);
+                  openExternalUrl('https://yandex.ru/maps/?text=$query');
                 },
               ),
             ],

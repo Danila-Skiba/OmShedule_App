@@ -102,8 +102,5 @@ class AppAlertDialog {
   }
 
   /// iOS 26 ждёт имя SF Symbol, остальные платформы — `IconData`.
-  static dynamic _resolveIcon(AppIcon? icon) {
-    if (icon == null) return null;
-    return PlatformInfo.isIOS26OrHigher() ? icon.symbol : icon.icon;
-  }
+  static dynamic _resolveIcon(AppIcon? icon) => icon?.adaptive;
 }

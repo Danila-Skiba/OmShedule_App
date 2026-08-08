@@ -5,13 +5,42 @@ import '../core/services/task_service.dart';
 import '../core/utils/platform_utils.dart';
 import '../widgets/base_container.dart';
 import '../widgets/app_dialog.dart';
-import '../widgets/app_snackbar.dart';
 import '../models/personal_task.dart';
+import '../ui/adaptive/adaptive_exports.dart';
 import '../widgets/app_progress.dart';
 import '../widgets/personal_task_card.dart';
 import 'add_task_screen.dart';
 
-/// Задачи пользователя — личные задачи на сегодня и завтра.
+/// Строка списка: либо заголовок дня, либо сама задача.
+///
+/// Список плоский, чтобы строиться лениво (`SliverList.builder`): задач у
+/// пользователя может накопиться сколько угодно, а вкладка показывает их все.
+sealed class _TaskRow {
+  const _TaskRow();
+}
+
+class _DayHeaderRow extends _TaskRow {
+  const _DayHeaderRow({
+    required this.date,
+    required this.total,
+    required this.done,
+  });
+
+  final DateTime date;
+  final int total;
+  final int done;
+}
+
+class _TaskItemRow extends _TaskRow {
+  const _TaskItemRow(this.task);
+
+  final PersonalTask task;
+}
+
+/// Задачи пользователя: со вчерашнего дня и все будущие.
+///
+/// Вчерашний день оставлен намеренно — вчерашняя невыполненная задача не
+/// должна исчезать из виду в полночь.
 class TasksScreen extends StatefulWidget {
   const TasksScreen({super.key});
 
@@ -21,6 +50,7 @@ class TasksScreen extends StatefulWidget {
 
 class _TasksScreenState extends State<TasksScreen> {
   List<PersonalTask> _taskList = [];
+  List<_TaskRow> _rows = const [];
 
   @override
   void initState() {
@@ -37,17 +67,52 @@ class _TasksScreenState extends State<TasksScreen> {
 
   void _onTasksChanged() => _loadTasks();
 
+  static DateTime get _today {
+    final now = DateTime.now();
+    return DateTime(now.year, now.month, now.day);
+  }
+
   Future<void> _loadTasks() async {
-    final tasks = await TaskService.instance.getTodayAndTomorrowTasks();
-    if (mounted) setState(() => _taskList = tasks);
+    final tasks = await TaskService.instance.getTasksFrom(
+      _today.subtract(const Duration(days: 1)),
+    );
+    if (!mounted) return;
+    setState(() {
+      _taskList = tasks;
+      _rows = _buildRows(tasks);
+    });
   }
 
-  Future<void> _toggleTask(String id) async {
-    await TaskService.instance.toggleCompleted(id);
-    _loadTasks();
+  /// Раскладывает задачи по дням и разворачивает в плоский список строк.
+  static List<_TaskRow> _buildRows(List<PersonalTask> tasks) {
+    final byDate = <String, List<PersonalTask>>{};
+    for (final task in tasks) {
+      byDate.putIfAbsent(task.date, () => []).add(task);
+    }
+
+    final rows = <_TaskRow>[];
+    final dates = byDate.keys.toList()..sort();
+    for (final date in dates) {
+      final dayTasks = byDate[date]!..sort((a, b) => a.time.compareTo(b.time));
+      final parsed = DateTime.tryParse(date);
+      if (parsed == null) continue;
+
+      rows.add(_DayHeaderRow(
+        date: parsed,
+        total: dayTasks.length,
+        done: dayTasks.where((t) => t.completed).length,
+      ));
+      rows.addAll(dayTasks.map(_TaskItemRow.new));
+    }
+    return rows;
   }
 
-  Future<void> _confirmDeleteTask(BuildContext context, PersonalTask task) async {
+  // Перечитывать список после каждой правки вручную не нужно: `TaskService`
+  // уведомляет слушателей сам, а на него подписан `initState`.
+  Future<void> _toggleTask(String id) =>
+      TaskService.instance.toggleCompleted(id);
+
+  Future<void> _confirmDeleteTask(PersonalTask task) async {
     final confirmed = await AppDialog.show(
       context: context,
       icon: Icons.delete_outline_rounded,
@@ -59,7 +124,6 @@ class _TasksScreenState extends State<TasksScreen> {
     if (confirmed == true && mounted) {
       try {
         await TaskService.instance.deleteTask(task.id);
-        await _loadTasks();
         if (mounted) {
           AppSnackBar.success(context, 'Задача удалена');
         }
@@ -81,12 +145,7 @@ class _TasksScreenState extends State<TasksScreen> {
   }
 
   void _editTask(PersonalTask task) {
-    final dateParts = task.date.split('-');
-    final forDate = DateTime(
-      int.parse(dateParts[0]),
-      int.parse(dateParts[1]),
-      int.parse(dateParts[2]),
-    );
+    final forDate = DateTime.tryParse(task.date) ?? DateTime.now();
     Navigator.of(context).push(
       buildRoute(AddTaskScreen( // iOS
         forDate: forDate,
@@ -98,23 +157,19 @@ class _TasksScreenState extends State<TasksScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final completedTasks = _taskList.where((t) => t.completed).length;
-    final totalTasks = _taskList.length;
-    final completionRate = totalTasks > 0 ? ((completedTasks / totalTasks) * 100).round() : 0;
-
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: buildAppBar( // iOS
-        context: context,
+    return AppScaffold(
+      appBar: AppAppBar(
         title: 'Задачи',
+        useNativeToolbar: true,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.add_rounded),
+          AppAppBarAction(
+            iosSymbol: AppIcons.add.symbol,
+            icon: AppIcons.add.icon,
             onPressed: _addTask,
           ),
-          IconButton(
-            icon: const Icon(Icons.settings_rounded),
+          AppAppBarAction(
+            iosSymbol: AppIcons.settings.symbol,
+            icon: AppIcons.settings.icon,
             onPressed: () => context.push('/settings'),
           ),
         ],
@@ -122,23 +177,50 @@ class _TasksScreenState extends State<TasksScreen> {
       body: CustomScrollView(
         slivers: [
           SliverPadding(
-            padding: const EdgeInsets.all(16),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                _buildTasksSection(completedTasks, totalTasks, completionRate),
-                SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
-              ]),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            sliver: SliverToBoxAdapter(child: _buildSummary()),
+          ),
+          if (_rows.isEmpty)
+            SliverToBoxAdapter(child: _buildEmpty())
+          else
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList.builder(
+                itemCount: _rows.length,
+                itemBuilder: (context, index) => switch (_rows[index]) {
+                  final _DayHeaderRow row => _DayHeader(
+                      date: row.date,
+                      total: row.total,
+                      done: row.done,
+                    ),
+                  final _TaskItemRow row => Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: PersonalTaskCard(
+                        task: row.task,
+                        onTap: () => _editTask(row.task),
+                        showCompletedToggle: true,
+                        onToggleCompleted: () => _toggleTask(row.task.id),
+                        onDelete: () => _confirmDeleteTask(row.task),
+                      ),
+                    ),
+                },
+              ),
             ),
+          SliverToBoxAdapter(
+            child: SizedBox(height: MediaQuery.of(context).padding.bottom + 100),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTasksSection(int completedTasks, int totalTasks, int completionRate) {
+  /// Сводка по всем показанным задачам.
+  Widget _buildSummary() {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
-    final grouped = _groupTasksByDate(_taskList);
+    final total = _taskList.length;
+    final done = _taskList.where((t) => t.completed).length;
+    final rate = total > 0 ? ((done / total) * 100).round() : 0;
 
     return BaseContainer(
       isGlass: isDark,
@@ -147,110 +229,189 @@ class _TasksScreenState extends State<TasksScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Мои задачи',
-                style: theme.textTheme.titleSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(
+                  Icons.checklist_rounded,
+                  size: 20,
                   color: theme.colorScheme.primary,
                 ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Мои задачи',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    Text(
+                      total == 0
+                          ? 'Ничего не запланировано'
+                          : 'Выполнено $done из $total',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color:
+                            theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                 decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                  color: theme.colorScheme.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '$completedTasks/$totalTasks',
+                  '$rate%',
                   style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                     color: theme.colorScheme.primary,
                   ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          AppProgress(value: completionRate.toDouble(), height: 8),
-          const SizedBox(height: 8),
-          Text(
-            '$completionRate% выполнено',
-            style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant),
-          ),
-          const SizedBox(height: 16),
-          if (_taskList.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.check_circle_outline_rounded,
-                      size: 40,
-                      color: theme.colorScheme.onSurface.withValues(alpha: 0.2),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Задач пока нет',
-                      style: TextStyle(
-                        fontSize: 13,
-                        color: theme.colorScheme.onSurface.withValues(alpha: 0.45),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          else
-            ...grouped.entries.expand((e) => [
-              Padding(
-                padding: const EdgeInsets.only(top: 8, bottom: 4),
-                child: Text(
-                  _formatDateLabel(e.key),
-                  style: theme.textTheme.labelMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              ...e.value.map((task) => Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: PersonalTaskCard(
-                  task: task,
-                  onTap: () => _editTask(task),
-                  showCompletedToggle: true,
-                  onToggleCompleted: () => _toggleTask(task.id),
-                  onDelete: () => _confirmDeleteTask(context, task),
-                ),
-              )),
-            ]),
+          if (total > 0) ...[
+            const SizedBox(height: 14),
+            AppProgress(value: rate.toDouble(), height: 8),
+          ],
         ],
       ),
     );
   }
 
-  Map<String, List<PersonalTask>> _groupTasksByDate(List<PersonalTask> tasks) {
-    final map = <String, List<PersonalTask>>{};
-    for (final t in tasks) {
-      map.putIfAbsent(t.date, () => []).add(t);
-    }
-    for (final list in map.values) {
-      list.sort((a, b) => a.time.compareTo(b.time));
-    }
-    return map;
+  Widget _buildEmpty() {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 40, 16, 0),
+      child: Center(
+        child: Column(
+          children: [
+            Icon(
+              Icons.event_available_rounded,
+              size: 48,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.18),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Задач пока нет',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w600,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Добавьте первую кнопкой + сверху',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 13,
+                color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
+}
 
-  String _formatDateLabel(String dateStr) {
-    final parts = dateStr.split('-');
-    if (parts.length != 3) return dateStr;
-    final d = DateTime(int.parse(parts[0]), int.parse(parts[1]), int.parse(parts[2]));
+/// Заголовок дня: «Вчера» / «Сегодня» / «Завтра», дальше — дата с днём недели.
+class _DayHeader extends StatelessWidget {
+  const _DayHeader({
+    required this.date,
+    required this.total,
+    required this.done,
+  });
+
+  final DateTime date;
+  final int total;
+  final int done;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final tomorrow = today.add(const Duration(days: 1));
-    if (d == today) return 'Сегодня';
-    if (d == tomorrow) return 'Завтра';
-    return DateFormat('d MMM', 'ru').format(d);
+    final diff = date.difference(today).inDays;
+
+    final isToday = diff == 0;
+    final isPast = diff < 0;
+    // Прошедший день с незакрытыми задачами — единственное, что здесь стоит
+    // выделять цветом: остальное пользователь ещё успеет сделать.
+    final overdue = isPast && done < total;
+
+    final label = switch (diff) {
+      -1 => 'Вчера',
+      0 => 'Сегодня',
+      1 => 'Завтра',
+      _ => _capitalize(DateFormat('EEEE, d MMMM', 'ru').format(date)),
+    };
+
+    final Color accent;
+    if (overdue) {
+      accent = theme.colorScheme.error;
+    } else if (isToday) {
+      accent = theme.colorScheme.primary;
+    } else {
+      accent = theme.colorScheme.onSurface.withValues(alpha: 0.55);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 12, bottom: 8),
+      child: Row(
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(color: accent, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Divider(
+              height: 1,
+              color: theme.dividerColor.withValues(alpha: 0.5),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$done/$total',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+              color: theme.colorScheme.onSurface.withValues(alpha: 0.4),
+            ),
+          ),
+        ],
+      ),
+    );
   }
+
+  static String _capitalize(String value) =>
+      value.isEmpty ? value : value[0].toUpperCase() + value.substring(1);
 }

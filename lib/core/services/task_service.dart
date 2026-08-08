@@ -88,6 +88,18 @@ class TaskService extends ChangeNotifier {
     return result;
   }
 
+  /// Все задачи начиная с указанной даты и до самой дальней — сколько бы их
+  /// ни было заведено вперёд.
+  ///
+  /// В отличие от [getTasksForPeriod] не перебирает дни: верхней границы нет,
+  /// а даты хранятся как `yyyy-MM-dd`, поэтому строкового сравнения достаточно.
+  Future<List<PersonalTask>> getTasksFrom(DateTime start) async {
+    final all = await _loadAll();
+    final from = _formatDate(DateTime(start.year, start.month, start.day));
+    return all.where((t) => t.date.compareTo(from) >= 0).toList()
+      ..sort(_sortByDateThenTime);
+  }
+
   /// Задачи на сегодня и завтра
   Future<List<PersonalTask>> getTodayAndTomorrowTasks() async {
     final now = DateTime.now();

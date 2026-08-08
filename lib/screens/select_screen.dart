@@ -1,7 +1,9 @@
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../constants/app_constants.dart';
 import '../core/utils/platform_utils.dart';
+import '../ui/adaptive/adaptive_exports.dart';
 import '../models/schedule_entry.dart';
 
 /// Тип выбора: группа, преподаватель, аудитория
@@ -66,16 +68,11 @@ class _SelectScreenState extends State<SelectScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: buildAppBar( // iOS
-        context: context,
+    return AppScaffold(
+      appBar: AppAppBar(
         title: widget.title,
-        leading: IconButton(
-          icon: Icon(isIOS ? CupertinoIcons.back : Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        backgroundColor: isIOS ? null : theme.colorScheme.primary,
+        useNativeToolbar: true,
+        leading: const AppToolbarLeading.back(),
       ),
       body: Column(
         children: [
@@ -167,9 +164,14 @@ class _SelectScreenState extends State<SelectScreen> {
                     ),
                   )
                 : ListView.builder(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppConstants.spacingLg,
-                      vertical: AppConstants.spacingSm,
+                    // Снизу — запас под нижнюю навигацию: она лежит поверх
+                    // содержимого, и без отступа последняя группа в списке
+                    // оказывалась наполовину под ней.
+                    padding: EdgeInsets.fromLTRB(
+                      AppConstants.spacingLg,
+                      AppConstants.spacingSm,
+                      AppConstants.spacingLg,
+                      MediaQuery.of(context).padding.bottom + 96,
                     ),
                     itemCount: _filtered.length,
                     itemBuilder: (context, index) {
@@ -184,7 +186,10 @@ class _SelectScreenState extends State<SelectScreen> {
                           borderRadius:
                               BorderRadius.circular(AppConstants.radiusMd),
                           child: InkWell(
-                            onTap: () => Navigator.of(context).pop(id),
+                            onTap: () {
+                              HapticFeedback.selectionClick();
+                              Navigator.of(context).pop(id);
+                            },
                             borderRadius:
                                 BorderRadius.circular(AppConstants.radiusMd),
                             child: Container(

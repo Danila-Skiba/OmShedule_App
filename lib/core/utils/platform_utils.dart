@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 // ─── Platform Detection ───────────────────────────────────────────────── // iOS
 final bool isIOS = Platform.isIOS;
@@ -27,6 +28,41 @@ Widget buildSmallLoader({Color? color}) {
     height: 22,
     child: CircularProgressIndicator(strokeWidth: 2.5, color: color),
   );
+}
+
+// ─── Внешние ссылки ─────────────────────────────────────────────────────
+/// Открывает ссылку во внешнем приложении (браузер, карты).
+///
+/// Все адреса в приложении — обычные https, так что открыть их на iOS всегда
+/// есть чем. Но `launchUrl` возвращает Future и умеет бросать
+/// `PlatformException`: вызовы без обработки превращались бы в необработанное
+/// асинхронное исключение, а пользователь всё равно ничего бы не заметил.
+Future<void> openExternalUrl(String url) async {
+  try {
+    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+  } catch (e) {
+    debugPrint('Не удалось открыть ссылку $url: $e');
+  }
+}
+
+// ─── Scroll ───────────────────────────────────────────────────────────── // iOS
+/// Поведение скролла для всего приложения.
+///
+/// На iOS списки «оттягиваются» у краёв независимо от того, помещается ли
+/// содержимое на экран: короткая лента новостей или пустая панель «Сегодня»
+/// раньше стояли колом, тогда как в системных приложениях тянется любой экран.
+/// Даёт это [AlwaysScrollableScrollPhysics] в родителях — сама
+/// `BouncingScrollPhysics` при коротком содержимом скролл не разрешает.
+///
+/// На Android поведение остаётся материальным: там оттяг у краёв чужероден.
+class AppScrollBehavior extends MaterialScrollBehavior {
+  const AppScrollBehavior();
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) {
+    if (!isIOS) return super.getScrollPhysics(context);
+    return const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics());
+  }
 }
 
 // ─── Navigation Transitions ──────────────────────────────────────────── // iOS

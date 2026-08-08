@@ -12,6 +12,25 @@ enum ScheduleLoadState { idle, loading, success, error }
 /// Контроллер состояния недели и расписания.
 /// Принимает начальные фильтры, чтобы избежать двойной загрузки.
 class ScheduleWeekController extends ChangeNotifier {
+  /// Контроллер уничтожен — оповещать больше некого.
+  ///
+  /// Загрузка расписания асинхронная и спокойно переживает уход с экрана:
+  /// ответ приходил уже после `dispose()`, и `notifyListeners()` роняло
+  /// «A ScheduleWeekController was used after being disposed».
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
+
+  @override
+  void notifyListeners() {
+    if (_disposed) return;
+    super.notifyListeners();
+  }
+
   ScheduleWeekController({
     ScheduleRepository? repository,
     DateTime? initialDate,

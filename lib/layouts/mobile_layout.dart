@@ -1,180 +1,156 @@
-import 'dart:ui';
-
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 
-/// Нижняя навигация — iOS 26 Liquid Glass
+import '../ui/adaptive/adaptive_exports.dart';
+
+/// Нижняя навигация.
+///
+/// iOS 26+ — нативный `UITabBar` с Liquid Glass ([AppNativeTabBar], который
+/// добавляет к нему обработку одиночного нажатия), iOS ≤ 18 — `CupertinoTabBar`,
+/// собранный здесь же (см. комментарий в `build`).
 class MobileLayout extends StatelessWidget {
   final Widget child;
 
   const MobileLayout({super.key, required this.child});
 
   static const List<_NavItem> _navItems = [
-    _NavItem(path: '/', label: 'Главная', icon: Icons.home_rounded),
     _NavItem(
-        path: '/schedule',
-        label: 'Расписание',
-        icon: Icons.calendar_today_rounded),
+      path: '/',
+      label: 'Главная',
+      icon: AppIcons.home,
+      cupertinoIcon: CupertinoIcons.house,
+      cupertinoActiveIcon: CupertinoIcons.house_fill,
+    ),
     _NavItem(
-        path: '/tasks',
-        label: 'Задачи',
-        icon: Icons.checklist_rounded),
+      path: '/schedule',
+      label: 'Расписание',
+      icon: AppIcons.schedule,
+      cupertinoIcon: CupertinoIcons.calendar,
+      cupertinoActiveIcon: CupertinoIcons.calendar_today,
+    ),
+    _NavItem(
+      path: '/tasks',
+      label: 'Задачи',
+      icon: AppIcons.tasks,
+      cupertinoIcon: CupertinoIcons.checkmark_circle,
+      cupertinoActiveIcon: CupertinoIcons.checkmark_circle_fill,
+    ),
   ];
+
+  /// Индекс активной вкладки. Для `/maps` (экран внутри шелла, но без своей
+  /// вкладки) совпадения нет — подсвечиваем «Главную», потому что нативный
+  /// таб-бар требует валидный индекс.
+  static int _selectedIndex(String location) {
+    for (var i = _navItems.length - 1; i >= 0; i--) {
+      final path = _navItems[i].path;
+      if (path == '/') {
+        if (location == '/' || location.isEmpty) return i;
+      } else if (location.startsWith(path)) {
+        return i;
+      }
+    }
+    return 0;
+  }
 
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
     final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
+    final selectedIndex = _selectedIndex(location);
+    const unselectedColor = Color(0xFF8E8E93);
 
-    bool isActive(String path) {
-      if (path == '/') return location == '/' || location.isEmpty;
-      return location.startsWith(path);
+    void openTab(int index) {
+      final path = _navItems[index].path;
+      if (path == location) return;
+      HapticFeedback.lightImpact();
+      context.go(path);
     }
 
+    final destinations = _navItems
+        .map(
+          (item) => AppNavigationDestination(
+            icon: item.icon.adaptive,
+            label: item.label,
+          ),
+        )
+        .toList();
+
+    // iOS ≤ 18 — обычный CupertinoTabBar из пакета: там нативного вида нет,
+    // нажатия работают штатно, обходной слой не нужен.
+    if (!PlatformInfo.isIOS26OrHigher()) {
+      // Панель собираем сами, а не отдаём пакету на автогенерацию: он строит
+      // `CupertinoTabBar` с иконками по 30 pt и одним начертанием на оба
+      // состояния. На iOS 18 это выглядело чужеродно — крупные заливки без
+      // пары «контур/заливка». Здесь же задаём привычные 26 pt и разные
+      // иконки для активной и неактивной вкладки, как в системных приложениях.
+      final cupertinoTabBar = CupertinoTabBar(
+        currentIndex: selectedIndex,
+        onTap: openTab,
+        activeColor: theme.colorScheme.primary,
+        inactiveColor: unselectedColor,
+        iconSize: 26,
+        items: _navItems
+            .map(
+              (item) => BottomNavigationBarItem(
+                icon: Icon(item.cupertinoIcon),
+                activeIcon: Icon(item.cupertinoActiveIcon),
+                label: item.label,
+              ),
+            )
+            .toList(),
+      );
+
+      return AppScaffold(
+        // Панель прижата к нижней кромке и уходит под клавиатуру — как в
+        // системных приложениях. См. комментарий в ветке iOS 26 ниже.
+        resizeToAvoidBottomInset: false,
+        body: child,
+        bottomNavigationBar: AppBottomNavigationBar(
+          useNativeBottomBar: false,
+          selectedIndex: selectedIndex,
+          selectedItemColor: theme.colorScheme.primary,
+          unselectedItemColor: unselectedColor,
+          items: destinations,
+          onTap: openTab,
+          cupertinoTabBar: cupertinoTabBar,
+        ),
+      );
+    }
+
+    // iOS 26+ — нативный таб-бар размещаем сами, чтобы положить поверх него
+    // слой обработки тапов (см. AppNativeTabBar). Раскладка повторяет ту,
+    // что делает AdaptiveScaffold: панель прижата к нижней кромке поверх тела.
     return Scaffold(
       extendBody: true,
-      body: child,
-      bottomNavigationBar: BottomAppBar(
-        notchMargin: 0,
-        color: Colors.transparent,
-        padding: EdgeInsets.zero,
-        surfaceTintColor: Colors.transparent,
-        elevation: 0,
-        child: Container(
-          margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
-          child: ClipRRect(
-            borderRadius: const BorderRadius.all(Radius.circular(28)),
-            child: BackdropFilter(
-              filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
-              child: Container(
-                decoration: BoxDecoration(
-                  // Liquid glass: полупрозрачный фон с лёгким тонированием
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: isDark
-                        ? [
-                            Colors.white.withOpacity(0.08),
-                            Colors.white.withOpacity(0.04),
-                            Colors.white.withOpacity(0.06),
-                          ]
-                        : [
-                            Colors.white.withOpacity(0.65),
-                            Colors.white.withOpacity(0.45),
-                            Colors.white.withOpacity(0.55),
-                          ],
-                  ),
-                  borderRadius: const BorderRadius.all(Radius.circular(28)),
-                  // Тонкая светящаяся граница
-                  border: Border.all(
-                    color: isDark
-                        ? Colors.white.withOpacity(0.15)
-                        : Colors.white.withOpacity(0.8),
-                    width: 0.5,
-                  ),
-                  boxShadow: [
-                    // Внешняя мягкая тень
-                    BoxShadow(
-                      color: isDark
-                          ? Colors.black.withOpacity(0.4)
-                          : Colors.black.withOpacity(0.08),
-                      blurRadius: 30,
-                      offset: const Offset(0, 8),
-                      spreadRadius: -4,
-                    ),
-                    // Внутреннее свечение (имитация стекла)
-                    if (!isDark)
-                      BoxShadow(
-                        color: Colors.white.withOpacity(0.5),
-                        blurRadius: 1,
-                        offset: const Offset(0, -0.5),
-                        spreadRadius: 0,
-                      ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceAround,
-                  children: _navItems.map((item) {
-                    final active = isActive(item.path);
-                    return Expanded(
-                      child: _NavTile(
-                        item: item,
-                        active: active,
-                        onTap: () {
-                          HapticFeedback.lightImpact();
-                          context.go(item.path);
-                        },
-                      ),
-                    );
-                  }).toList(),
-                ),
-              ),
+      // Панель лежит в `Positioned(bottom: 0)`, поэтому при включённом
+      // resize она поднималась вместе с телом и повисала над клавиатурой
+      // (заметнее всего в поиске по фильтрам). Отключаем resize: окно
+      // клавиатуры имеет более высокий z-order и просто накрывает панель —
+      // именно так ведут себя системные приложения. Экраны внутри шелла
+      // отодвигают своё содержимое сами, у каждого свой каркас.
+      //
+      // Ровно так же поступает и AdaptiveScaffold, когда таб-бар отдан ему
+      // (`resizeToAvoidBottomInset ?? !hasBottomNav`), но здесь панель
+      // размещаем мы, и настройка по умолчанию досталась от Scaffold.
+      resizeToAvoidBottomInset: false,
+      body: Stack(
+        children: [
+          child,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            child: AppNativeTabBar(
+              destinations: destinations,
+              selectedIndex: selectedIndex,
+              onTap: openTab,
+              selectedItemColor: theme.colorScheme.primary,
+              unselectedItemColor: unselectedColor,
             ),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavTile extends StatelessWidget {
-  final _NavItem item;
-  final bool active;
-  final VoidCallback onTap;
-
-  const _NavTile({
-    required this.item,
-    required this.active,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = theme.brightness == Brightness.dark;
-    final activeColor = theme.colorScheme.primary;
-    final inactiveColor =
-        isDark ? const Color(0xFF8E8E93) : const Color(0xFF8E8E93);
-
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 200),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              decoration: BoxDecoration(
-                color: active
-                    ? activeColor.withOpacity(isDark ? 0.18 : 0.12)
-                    : Colors.transparent,
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(
-                item.icon,
-                size: 22,
-                color: active ? activeColor : inactiveColor,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              item.label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: active ? FontWeight.w600 : FontWeight.w400,
-                color: active ? activeColor : inactiveColor,
-              ),
-              overflow: TextOverflow.ellipsis,
-              maxLines: 1,
-            ),
-          ],
-        ),
+        ],
       ),
     );
   }
@@ -183,11 +159,20 @@ class _NavTile extends StatelessWidget {
 class _NavItem {
   final String path;
   final String label;
-  final IconData icon;
+
+  /// Иконка для нативной панели iOS 26 и для Android.
+  final AppIcon icon;
+
+  /// Пара иконок для `CupertinoTabBar` на iOS ≤ 18: контурная у неактивной
+  /// вкладки, залитая у активной.
+  final IconData cupertinoIcon;
+  final IconData cupertinoActiveIcon;
 
   const _NavItem({
     required this.path,
     required this.label,
     required this.icon,
+    required this.cupertinoIcon,
+    required this.cupertinoActiveIcon,
   });
 }

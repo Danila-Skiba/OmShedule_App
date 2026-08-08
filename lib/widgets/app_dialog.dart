@@ -112,7 +112,7 @@ class AppDialog extends StatelessWidget {
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       elevation: isDark ? 0 : 8,
-      shadowColor: Colors.black.withOpacity(0.15),
+      shadowColor: Colors.black.withValues(alpha: 0.15),
       insetPadding: const EdgeInsets.symmetric(horizontal: 40),
       child: Padding(
         padding: const EdgeInsets.fromLTRB(24, 28, 24, 20),
@@ -125,7 +125,7 @@ class AppDialog extends StatelessWidget {
                 width: 52,
                 height: 52,
                 decoration: BoxDecoration(
-                  color: accentColor.withOpacity(isDark ? 0.15 : 0.1),
+                  color: accentColor.withValues(alpha: isDark ? 0.15 : 0.1),
                   shape: BoxShape.circle,
                 ),
                 child: Icon(icon, size: 26, color: accentColor),
@@ -153,7 +153,7 @@ class AppDialog extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 14,
-                  color: onSurface.withOpacity(0.6),
+                  color: onSurface.withValues(alpha: 0.6),
                   height: 1.4,
                 ),
               ),
@@ -174,7 +174,7 @@ class AppDialog extends StatelessWidget {
                 Expanded(
                   child: Material(
                     color: isDark
-                        ? Colors.white.withOpacity(0.08)
+                        ? Colors.white.withValues(alpha: 0.08)
                         : const Color(0xFFF3F4F6),
                     borderRadius: BorderRadius.circular(12),
                     child: InkWell(
@@ -188,7 +188,7 @@ class AppDialog extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: onSurface.withOpacity(0.7),
+                            color: onSurface.withValues(alpha: 0.7),
                           ),
                         ),
                       ),

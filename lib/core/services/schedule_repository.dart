@@ -12,6 +12,10 @@ import '../../models/week_period.dart';
 /// Эндпоинты: group/{id}, person/{id}, auditorium/{id}
 /// Параметры периода: start / finish в формате YYYY.MM.DD
 class ApiClient implements ScheduleRepository {
+  /// Ограничение на запрос: у `package:http` таймаута по умолчанию нет,
+  /// и «повисший» ответ оставлял экран в состоянии загрузки навсегда.
+  static const Duration _requestTimeout = Duration(seconds: 20);
+
   final String baseUrl;
   final http.Client client;
 
@@ -40,7 +44,7 @@ class ApiClient implements ScheduleRepository {
       final response = await client.get(url, headers: {
         'Content-Type': 'application/json; charset=utf-8',
         'Accept': 'application/json',
-      });
+      }).timeout(_requestTimeout);
       if (response.statusCode != 200) {
         throw Exception('Failed to load schedule (status: ${response.statusCode})');
       }

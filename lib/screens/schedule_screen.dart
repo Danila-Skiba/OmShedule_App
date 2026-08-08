@@ -2,8 +2,8 @@ import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:omstu_schedule/core/services/schedule_cache_service.dart';
 import 'package:omstu_schedule/core/utils/week_service.dart';
 import 'package:omstu_schedule/widgets/base_container.dart';
@@ -19,7 +19,7 @@ import '../models/lesson.dart';
 import '../models/personal_task.dart';
 import '../models/schedule_type.dart';
 import '../widgets/personal_task_card.dart';
-import '../widgets/app_snackbar.dart';
+import '../ui/adaptive/adaptive_exports.dart';
 import '../widgets/app_dialog.dart';
 import 'add_task_screen.dart';
 
@@ -58,6 +58,15 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   bool _isPageAnimating = false;
   int _weekSwipeKey = 0; // ключ для AnimatedSwitcher при смене недели
 
+  /// Куда «уехала» полоска дней в последний раз: 1 — вперёд, -1 — назад.
+  /// От этого зависит, с какой стороны въезжает новая неделя.
+  int _stripDirection = 1;
+
+  /// Страница-«мостик» на время перехода между неделями и дата, которую она
+  /// показывает вместо своей. Подробности — в [_shiftWeekKeepingWeekday].
+  int? _bridgePage;
+  DateTime? _bridgeDate;
+
   // Текущие значения фильтра (дублируем для передачи в cache/week queries)
   String? _filterGroupIds;
   String? _filterTeacherNames;
@@ -86,6 +95,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   int _pageForDate(DateTime date) {
     final d = DateTime(date.year, date.month, date.day);
     return _kMidPage + d.difference(_refDay).inDays;
+  }
+
+  /// Дата, которую страница показывает на самом деле.
+  ///
+  /// Отличается от [_dateForPage] только у страницы-«мостика», пока идёт
+  /// переход между неделями.
+  DateTime _visibleDateForPage(int page) {
+    final bridgeDate = _bridgeDate;
+    if (bridgeDate != null && page == _bridgePage) return bridgeDate;
+    return _dateForPage(page);
   }
 
   int get _currentDayPage => _pageForDate(_weekController.selectedDate);
@@ -366,19 +385,38 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+    return AppScaffold(
       appBar: _buildHeader(),
       body: Stack(
         children: [
           _view == 'today' ? _buildDaySwipeView() : _buildWeekSwipeView(),
-          if (_weekController.loadState == ScheduleLoadState.loading)
-            Container(
-              color: Theme.of(context)
-                  .scaffoldBackgroundColor
-                  .withValues(alpha: 0.65),
-              child: Center(child: buildLoader()), // iOS
-            ),
+          // Пелена загрузки раньше появлялась и пропадала в один кадр —
+          // при листании недель это читалось как мигание. Теперь она
+          // проявляется, а касания сквозь неё блокируются только пока
+          // загрузка действительно идёт.
+          Builder(builder: (context) {
+            final isLoading =
+                _weekController.loadState == ScheduleLoadState.loading;
+            return IgnorePointer(
+              ignoring: !isLoading,
+              child: AnimatedOpacity(
+                opacity: isLoading ? 1 : 0,
+                duration: const Duration(milliseconds: 180),
+                curve: Curves.easeOut,
+                child: Container(
+                  color: Theme.of(context)
+                      .scaffoldBackgroundColor
+                      .withValues(alpha: 0.65),
+                  // Сам индикатор держим в дереве только во время загрузки:
+                  // он крутится бесконечно и при нулевой прозрачности продолжал
+                  // бы гнать кадры впустую.
+                  child: isLoading
+                      ? Center(child: buildLoader()) // iOS
+                      : const SizedBox.expand(),
+                ),
+              ),
+            );
+          }),
           if (_filterController.isPersonal)
             Positioned(
               right: 16,
@@ -394,31 +432,32 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
   // AppBar
   // ---------------------------------------------------------------------------
 
-  PreferredSizeWidget _buildHeader() {
-    return buildAppBar( // iOS
-      context: context,
+  AppAppBar _buildHeader() {
+    // Нативный тулбар iOS 26 не умеет анимировать смену иконки, поэтому
+    // вместо AnimatedSwitcher — два разных SF Symbol на два состояния.
+    final filterIcon =
+        _filterBarVisible ? AppIcons.filterOff : AppIcons.filter;
+
+    return AppAppBar(
       title: 'Расписание',
+      useNativeToolbar: true,
+      // Без явного tintColor нативный тулбар красит кнопки системным синим
+      // (в том числе подсветкой при нажатии). Задаём цвет сами, чтобы иконки
+      // выглядели одинаково и в покое, и во время нажатия.
+      tintColor: Theme.of(context).colorScheme.onSurface,
       actions: [
-        IconButton(
-          icon: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 200),
-            child: Icon(
-              _filterBarVisible
-                  ? Icons.filter_list_off_rounded
-                  : Icons.filter_list_rounded,
-              key: ValueKey(_filterBarVisible),
-            ),
-          ),
+        AppAppBarAction(
+          iosSymbol: filterIcon.symbol,
+          icon: filterIcon.icon,
           onPressed: () => setState(() {
             _filterBarVisible = !_filterBarVisible;
             _SessionState.filterBarVisible = _filterBarVisible;
           }),
-          tooltip: _filterBarVisible ? 'Скрыть фильтры' : 'Показать фильтры',
         ),
-        IconButton(
-          icon: const Icon(Icons.calendar_month_rounded),
+        AppAppBarAction(
+          iosSymbol: AppIcons.calendarPick.symbol,
+          icon: AppIcons.calendarPick.icon,
           onPressed: _openCalendar,
-          tooltip: 'Выбор даты',
         ),
       ],
     );
@@ -439,13 +478,16 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
         else
           Expanded(
             child: PageView.builder(
+              // Ключ — опора для тестов: на экране несколько PageView
+              // (ещё один внутри карточек пар), и различать их по внутренним
+              // признакам делегата хрупко.
+              key: const ValueKey('schedule-day-pages'),
               controller: _dayPageController,
               physics: const BouncingScrollPhysics(),
               itemCount: _kTotalDayPages,
               onPageChanged: _onDayPageChanged,
               itemBuilder: (context, page) {
-                final date = _dateForPage(page);
-                return _buildSingleDayPage(date);
+                return _buildSingleDayPage(_visibleDateForPage(page));
               },
             ),
           ),
@@ -476,9 +518,73 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
+  /// Переход на соседнюю неделю с сохранением дня недели: со среды 12-го
+  /// свайп вперёд ведёт на среду 19-го, а не на понедельник.
+  ///
+  /// Этим свайп по полоске дней отличается от стрелок «‹ ›» рядом с датой
+  /// периода: те переводят на начало недели ([ScheduleWeekController.goToNextWeek]).
+  ///
+  /// Анимация всегда на **одну** страницу, а не на семь. `animateToPage` через
+  /// неделю прокручивал бы `PageView` по всем промежуточным дням: они успевали
+  /// отрисоваться и мелькали, а `onPageChanged` срабатывал на каждом. Поэтому
+  /// соседней странице временно назначается целевая дата ([_bridgeDate]) — до
+  /// неё и идёт обычный однокадровый переход, как при свайпе между днями.
+  ///
+  /// Когда анимация закончилась, подмена снимается, а опорный день [_refDay]
+  /// сдвигается на шесть суток: вместе с самой перелистнутой страницей это
+  /// ровно неделя, поэтому та же страница означает ту же дату и содержимое не
+  /// дёргается. Соседние страницы после этого снова идут подряд по дням.
+  void _shiftWeekKeepingWeekday(int direction) {
+    // Переход уже идёт — второй свайп подряд игнорируем, иначе «мостик»
+    // перезапишется и страницы разъедутся с датами.
+    if (_bridgePage != null) return;
+
+    final target =
+        _weekController.selectedDate.add(Duration(days: 7 * direction));
+    if (!WeekService.isValidDate(target)) return;
+
+    HapticFeedback.selectionClick();
+
+    if (!_dayPageController.hasClients) {
+      setState(() => _stripDirection = direction);
+      _weekController.goToWeekContaining(target);
+      return;
+    }
+
+    final bridgePage =
+        (_dayPageController.page?.round() ?? _currentDayPage) + direction;
+
+    setState(() {
+      _stripDirection = direction;
+      _bridgePage = bridgePage;
+      _bridgeDate = target;
+    });
+
+    // Флаг ставим до обращения к контроллеру: его слушатель при изменении
+    // даты дёргает `jumpToPage`, и день сменился бы рывком вместо анимации.
+    _isPageAnimating = true;
+    _weekController.goToWeekContaining(target);
+
+    _dayPageController
+        .animateToPage(
+          bridgePage,
+          duration: const Duration(milliseconds: 320),
+          curve: Curves.easeInOut,
+        )
+        .whenComplete(() {
+      if (!mounted) return;
+      setState(() {
+        _refDay = _refDay.add(Duration(days: 6 * direction));
+        _bridgePage = null;
+        _bridgeDate = null;
+      });
+      _isPageAnimating = false;
+    });
+  }
+
   void _onDayPageChanged(int page) {
     _isPageAnimating = true;
-    final date = _dateForPage(page);
+    final date = _visibleDateForPage(page);
 
     // Если дата вышла за пределы текущей недели — переходим на нужную неделю
     if (!_weekController.currentWeek.contains(date)) {
@@ -563,7 +669,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
           child: PersonalTaskCard(
             task: t,
             onTap: () => _editTask(t),
-            onDelete: () => _confirmDeleteTask(context, t),
+            onDelete: () => _confirmDeleteTask(t),
           ),
         ));
       } else {
@@ -616,7 +722,9 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     for (final l in sorted) {
       if (!map.containsKey(l.timeStart)) {
         num++;
-        map[l.timeStart] = l.duration ?? num;
+        // duration — это lessonNumberStart из API; при отсутствии поля там 0,
+        // и тогда номер пары считаем сами по порядку уникальных timeStart.
+        map[l.timeStart] = l.duration > 0 ? l.duration : num;
       }
     }
     return map;
@@ -808,94 +916,35 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     final theme = Theme.of(context);
     final isDark = theme.brightness == Brightness.dark;
 
-    final activeBg = isDark
-        ? Colors.white.withValues(alpha: 0.14)
-        : Colors.white;
-    final containerBg = isDark
-        ? Colors.white.withValues(alpha: 0.05)
-        : Colors.white.withValues(alpha: 0.12);
-
-    return BaseContainer(
-      shadow: false,
-      margin:
-          const EdgeInsets.symmetric(horizontal: 16).copyWith(bottom: 8),
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      backgroundColor: containerBg,
-      child: LayoutBuilder(builder: (context, constraints) {
-        return Stack(
-          children: [
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-              margin: EdgeInsets.only(
-                left: _view == 'today' ? 4 : constraints.maxWidth / 2,
-              ),
-              width: (constraints.maxWidth - 8) / 2,
-              height: 34,
-              decoration: BoxDecoration(
-                color: activeBg,
-                borderRadius: BorderRadius.circular(11),
-                boxShadow: isDark
-                    ? null
-                    : [
-                        BoxShadow(
-                          color: theme.colorScheme.primary
-                              .withValues(alpha: 0.12),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
-              ),
-            ),
-            Row(
-              children: [
-                _segmentBtn('День', 'today', _view == 'today', isDark, theme),
-                _segmentBtn('Неделя', 'week', _view == 'week', isDark, theme),
-              ],
-            ),
-          ],
-        );
-      }),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: AppSegmentedControl(
+        labels: const ['День', 'Неделя'],
+        selectedIndex: _view == 'today' ? 0 : 1,
+        color: theme.colorScheme.primary,
+        selectedTextColor: Colors.white,
+        textColor: isDark
+            ? Colors.white.withValues(alpha: 0.45)
+            : theme.colorScheme.onSurface.withValues(alpha: 0.5),
+        onValueChanged: (index) =>
+            _onViewChanged(index == 0 ? 'today' : 'week'),
+      ),
     );
   }
 
-  Widget _segmentBtn(String label, String value, bool isSelected,
-      bool isDark, ThemeData theme) {
-    final textColor = isDark
-        ? (isSelected ? Colors.white : Colors.white.withValues(alpha: 0.45))
-        : (isSelected
-            ? theme.colorScheme.primary
-            : theme.colorScheme.onSurface.withValues(alpha: 0.5));
-
-    return Expanded(
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: () => setState(() {
-          _view = value;
-          _SessionState.view = value;
-          if (value == 'today') {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              if (_dayPageController.hasClients) {
-                _dayPageController.jumpToPage(_currentDayPage);
-              }
-            });
-          }
-        }),
-        child: SizedBox(
-          height: 34,
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-                color: textColor,
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
+  void _onViewChanged(String value) {
+    if (value == _view) return;
+    setState(() {
+      _view = value;
+      _SessionState.view = value;
+    });
+    if (value == 'today') {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_dayPageController.hasClients) {
+          _dayPageController.jumpToPage(_currentDayPage);
+        }
+      });
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -924,9 +973,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   _weekController.goToPreviousWeek();
                   setState(() => _weekSwipeKey++);
                 }),
-            Text(week.formattedPeriod,
-                style: theme.textTheme.titleSmall
-                    ?.copyWith(fontWeight: FontWeight.w700)),
+            _periodLabel(week.formattedPeriod, theme),
             _navIconBtn(Icons.chevron_right_rounded, iconColor,
                 isLoading ? null : () {
                   _weekController.goToNextWeek();
@@ -948,16 +995,52 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             children: [
               _navIconBtn(Icons.chevron_left_rounded, iconColor,
                   isLoading ? null : () => _weekController.goToPreviousWeek()),
-              Text(week.formattedPeriod,
-                  style: theme.textTheme.titleSmall
-                      ?.copyWith(fontWeight: FontWeight.w700)),
+              _periodLabel(week.formattedPeriod, theme),
               _navIconBtn(Icons.chevron_right_rounded, iconColor,
                   isLoading ? null : () => _weekController.goToNextWeek()),
             ],
           ),
           const SizedBox(height: 10),
-          Row(
-            children: List.generate(7, (i) {
+          // Свайп по ячейкам дней листает недели, оставаясь на том же дне
+          // недели. Жест висит только на этой строке: ниже свой `PageView` со
+          // свайпом между днями, и объединять их нельзя — иначе один из двух
+          // забирал бы жест целиком.
+          //
+          // `onHorizontalDragEnd` вместо вложенного `PageView`: полоска
+          // перестраивается под неделю контроллера, и держать её собственную
+          // прокрутку в согласии с ним пришлось бы вручную.
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onHorizontalDragEnd: isLoading
+                ? null
+                : (details) {
+                    final velocity = details.primaryVelocity ?? 0;
+                    // Короткие дрожащие движения пальцем не считаем свайпом.
+                    if (velocity.abs() < 120) return;
+                    // Палец влево (отрицательная скорость) — вперёд по времени.
+                    _shiftWeekKeepingWeekday(velocity < 0 ? 1 : -1);
+                  },
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              switchInCurve: Curves.easeOut,
+              switchOutCurve: Curves.easeIn,
+              transitionBuilder: (child, animation) {
+                final isIncoming =
+                    child.key == ValueKey<DateTime>(week.startDate);
+                final dx = isIncoming
+                    ? _stripDirection * 0.25
+                    : -_stripDirection * 0.25;
+                return SlideTransition(
+                  position: Tween<Offset>(
+                    begin: Offset(dx, 0),
+                    end: Offset.zero,
+                  ).animate(animation),
+                  child: FadeTransition(opacity: animation, child: child),
+                );
+              },
+              child: Row(
+                key: ValueKey<DateTime>(week.startDate),
+                children: List.generate(7, (i) {
               final label = WeekService.weekDayLabels[i];
               final date = week.dates[i];
               final isSelected = _weekController.selectedDayIndex == i;
@@ -993,34 +1076,47 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 7),
                       child: Column(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
-                          Text(
-                            label,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: isSelected
-                                  ? Colors.white
-                                  : isToday
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface
-                                          .withValues(alpha: 0.55),
+                          // Ячейка узкая — седьмая часть экрана. Подпись
+                          // ужимается, а не переносится по буквам: при крупном
+                          // системном шрифте «ПН» вставало в три строки и
+                          // полоска разъезжалась.
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              label,
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                                color: isSelected
+                                    ? Colors.white
+                                    : isToday
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.55),
+                              ),
                             ),
                           ),
                           const SizedBox(height: 2),
-                          Text(
-                            '${date.day}',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: isSelected
-                                  ? Colors.white
-                                  : isToday
-                                      ? theme.colorScheme.primary
-                                      : theme.colorScheme.onSurface
-                                          .withValues(alpha: 0.7),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            child: Text(
+                              '${date.day}',
+                              textAlign: TextAlign.center,
+                              maxLines: 1,
+                              style: TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w700,
+                                color: isSelected
+                                    ? Colors.white
+                                    : isToday
+                                        ? theme.colorScheme.primary
+                                        : theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.7),
+                              ),
                             ),
                           ),
                         ],
@@ -1029,9 +1125,31 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
                   ),
                 ),
               );
-            }),
+                }),
+              ),
+            ),
           ),
         ],
+      ),
+    );
+  }
+
+  /// Период недели между стрелками «‹ ›».
+  ///
+  /// Занимает всё, что осталось от стрелок, и ужимается вместо того, чтобы на
+  /// них наезжать: «28 сен 2026 - 4 октября 2026» — уже длинная строка, а с
+  /// увеличенным системным шрифтом она перестаёт помещаться и на широком экране.
+  Widget _periodLabel(String text, ThemeData theme) {
+    return Expanded(
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Text(
+          text,
+          maxLines: 1,
+          style: theme.textTheme.titleSmall?.copyWith(
+            fontWeight: FontWeight.w700,
+          ),
+        ),
       ),
     );
   }
@@ -1142,7 +1260,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
             child: PersonalTaskCard(
               task: t,
               onTap: () => _editTask(t),
-              onDelete: () => _confirmDeleteTask(context, t),
+              onDelete: () => _confirmDeleteTask(t),
             ),
           ));
         } else {
@@ -1356,8 +1474,7 @@ class _ScheduleScreenState extends State<ScheduleScreen> {
     );
   }
 
-  Future<void> _confirmDeleteTask(
-      BuildContext context, PersonalTask task) async {
+  Future<void> _confirmDeleteTask(PersonalTask task) async {
     final confirmed = await AppDialog.show(
       context: context,
       icon: Icons.delete_outline_rounded,
@@ -1580,11 +1697,16 @@ class _LessonCard extends StatelessWidget {
                   // Время + тип занятия справа
                   Row(
                     children: [
-                      Text(
-                        '${lesson.timeStart} – ${lesson.timeEnd}',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: theme.colorScheme.onSurface.withValues(alpha: 0.55),
+                      Flexible(
+                        child: Text(
+                          '${lesson.timeStart} – ${lesson.timeEnd}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                            color: theme.colorScheme.onSurface
+                                .withValues(alpha: 0.55),
+                          ),
                         ),
                       ),
                       const Spacer(),
@@ -1607,15 +1729,20 @@ class _LessonCard extends StatelessWidget {
                         ),
                         const SizedBox(width: 8),
                       ],
-                      // Тип занятия — справа
+                      // Тип занятия — справа. Чип занимает столько, сколько
+                      // нужно подписи: «ПОДГОТОВКА» и «КОНСУЛЬТАЦИЯ» должны
+                      // читаться целиком. Место под него при нехватке ширины
+                      // освобождает время слева — оно ужимается с многоточием.
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
                           color: chipColor.withValues(alpha: isDark ? 0.18 : 0.12),
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
                           lesson.typeLabel,
+                          maxLines: 1,
                           style: TextStyle(
                             fontSize: 10,
                             fontWeight: FontWeight.w700,
@@ -1837,7 +1964,6 @@ class _LessonDetailsSheet extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
     final primary = theme.colorScheme.primary;
     final onSurface = theme.colorScheme.onSurface;
-    final typeColor = _lessonTypeChipColor(lesson.type, isDark);
     final buildingInfo = BuildingData.findByAuditorium(lesson.room);
     final hasSubgroup = lesson.subgroup != null && lesson.subgroup!.isNotEmpty;
 
@@ -1845,13 +1971,23 @@ class _LessonDetailsSheet extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 32),
       decoration: BoxDecoration(
         color: isDark ? null : theme.cardColor,
+        // В тёмной теме лист лежит поверх размытия и раньше был почти
+        // прозрачным — содержимое под ним просвечивало и сливалось.
+        // Блик сверху оставляем, но подмешиваем его к непрозрачному цвету
+        // карточки, а не кладём голым белым с альфой.
         gradient: isDark
             ? LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
                 colors: [
-                  Colors.white.withOpacity(0.1),
-                  Colors.white.withOpacity(0.05),
+                  Color.alphaBlend(
+                    Colors.white.withValues(alpha: 0.10),
+                    theme.cardColor,
+                  ),
+                  Color.alphaBlend(
+                    Colors.white.withValues(alpha: 0.05),
+                    theme.cardColor,
+                  ),
                 ],
               )
             : null,
@@ -1859,7 +1995,7 @@ class _LessonDetailsSheet extends StatelessWidget {
         border: isDark
             ? Border(
                 top: BorderSide(
-                  color: Colors.white.withOpacity(0.15),
+                  color: Colors.white.withValues(alpha: 0.15),
                   width: 0.5,
                 ),
               )
@@ -1872,7 +2008,7 @@ class _LessonDetailsSheet extends StatelessWidget {
             ? null
             : [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
+                  color: Colors.black.withValues(alpha: 0.08),
                   blurRadius: 20,
                   offset: const Offset(0, -4),
                 ),
@@ -1895,12 +2031,16 @@ class _LessonDetailsSheet extends StatelessWidget {
             ),
           ),
 
-          // Название предмета
+          // Название предмета. Цвет — обычный текстовый, а не акцентный:
+          // акцент пользователь выбирает сам, и на приглушённых оттенках
+          // (пыльный зелёный, дымчато-голубой) заголовок терялся на фоне
+          // шторки. Здесь он должен быть белым в тёмной теме и тёмным в
+          // светлой — `onSurface` даёт ровно это.
           Text(
             lesson.subject,
             style: theme.textTheme.titleLarge?.copyWith(
               fontWeight: FontWeight.bold,
-              color: primary,
+              color: onSurface,
             ),
           ),
           const SizedBox(height: 20),
@@ -1995,7 +2135,7 @@ class _LessonDetailsSheet extends StatelessWidget {
                           color: AppColors.error.withValues(alpha: 0.12),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        child: Icon(Icons.location_on_rounded, color: AppColors.error, size: 18),
+                        child: const Icon(Icons.location_on_rounded, color: AppColors.error, size: 18),
                       ),
                       const SizedBox(width: 8),
                       Flexible(
@@ -2180,8 +2320,8 @@ class _LessonDetailsSheet extends StatelessWidget {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.white.withOpacity(0.1),
-                      Colors.white.withOpacity(0.05),
+                      Colors.white.withValues(alpha: 0.1),
+                      Colors.white.withValues(alpha: 0.05),
                     ],
                   )
                 : null,
@@ -2189,7 +2329,7 @@ class _LessonDetailsSheet extends StatelessWidget {
             border: isDark
                 ? Border(
                     top: BorderSide(
-                      color: Colors.white.withOpacity(0.15),
+                      color: Colors.white.withValues(alpha: 0.15),
                       width: 0.5,
                     ),
                   )
@@ -2202,7 +2342,7 @@ class _LessonDetailsSheet extends StatelessWidget {
                 ? null
                 : [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       blurRadius: 20,
                       offset: const Offset(0, -4),
                     ),
@@ -2274,16 +2414,14 @@ class _LessonDetailsSheet extends StatelessWidget {
     );
   }
 
-  Future<void> _openIn2GIS(BuildingInfo info) async {
+  Future<void> _openIn2GIS(BuildingInfo info) {
     final query = Uri.encodeComponent('Омск, ${info.address}');
-    final webUri = Uri.parse('https://2gis.ru/omsk/search/$query');
-    await launchUrl(webUri, mode: LaunchMode.externalApplication);
+    return openExternalUrl('https://2gis.ru/omsk/search/$query');
   }
 
-  Future<void> _openInYandexMaps(BuildingInfo info) async {
+  Future<void> _openInYandexMaps(BuildingInfo info) {
     final query = Uri.encodeComponent('Омск, ${info.address}');
-    final webUri = Uri.parse('https://yandex.ru/maps/?text=$query');
-    await launchUrl(webUri, mode: LaunchMode.externalApplication);
+    return openExternalUrl('https://yandex.ru/maps/?text=$query');
   }
 }
 

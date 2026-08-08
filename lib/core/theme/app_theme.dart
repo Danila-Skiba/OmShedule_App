@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'app_colors.dart';
 
 class AppTheme {
   AppTheme._();
 
+  /// Семейство шрифта — подключено ассетами в pubspec.yaml.
+  static const String fontFamily = 'Inter';
+
   /// Базовый TextTheme на основе Inter.
-  static TextTheme _inter(TextTheme base) => GoogleFonts.interTextTheme(base);
+  static TextTheme _inter(TextTheme base) => base.apply(fontFamily: fontFamily);
 
   // ═══════════════════════════════════════════════════════════════════════════
   // Светлая тема
@@ -55,19 +57,20 @@ class AppTheme {
         ),
       ),
       dividerColor: AppColors.divider,
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimary,
         elevation: 0,
         scrolledUnderElevation: 0,
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: TextStyle(
+          fontFamily: fontFamily,
           fontSize: 20,
           fontWeight: FontWeight.w700,
           color: AppColors.textPrimary,
         ),
-        iconTheme: const IconThemeData(color: AppColors.textPrimary),
+        iconTheme: IconThemeData(color: AppColors.textPrimary),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
@@ -105,8 +108,8 @@ class AppTheme {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((s) {
             return s.contains(WidgetState.selected)
-                ? primary.withOpacity(0.12)
-                : Colors.white.withOpacity(0.5);
+                ? primary.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.5);
           }),
           foregroundColor: WidgetStateProperty.resolveWith((s) {
             return s.contains(WidgetState.selected)
@@ -114,7 +117,7 @@ class AppTheme {
                 : AppColors.textSecondary;
           }),
           side: WidgetStateProperty.all(
-              BorderSide(color: AppColors.border.withOpacity(0.5))),
+              BorderSide(color: AppColors.border.withValues(alpha: 0.5))),
           shape: WidgetStateProperty.all(
             RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
@@ -169,7 +172,7 @@ class AppTheme {
         ),
       ),
       dividerColor: AppColors.dividerDark,
-      appBarTheme: AppBarTheme(
+      appBarTheme: const AppBarTheme(
         backgroundColor: Colors.transparent,
         foregroundColor: AppColors.textPrimaryDark,
         elevation: 0,
@@ -177,12 +180,13 @@ class AppTheme {
         centerTitle: false,
         surfaceTintColor: Colors.transparent,
         shadowColor: Colors.transparent,
-        titleTextStyle: GoogleFonts.inter(
+        titleTextStyle: TextStyle(
+          fontFamily: fontFamily,
           fontSize: 20,
           fontWeight: FontWeight.w700,
           color: AppColors.textPrimaryDark,
         ),
-        iconTheme: const IconThemeData(color: AppColors.textPrimaryDark),
+        iconTheme: IconThemeData(color: AppColors.textPrimaryDark),
       ),
       bottomAppBarTheme: const BottomAppBarThemeData(
         color: Colors.transparent,
@@ -222,7 +226,7 @@ class AppTheme {
         style: ButtonStyle(
           backgroundColor: WidgetStateProperty.resolveWith((s) {
             return s.contains(WidgetState.selected)
-                ? primary.withOpacity(0.22)
+                ? primary.withValues(alpha: 0.22)
                 : AppColors.backgroundAltDark;
           }),
           foregroundColor: WidgetStateProperty.resolveWith((s) {
@@ -266,7 +270,7 @@ class AppTheme {
         style: ButtonStyle(
           foregroundColor: WidgetStateProperty.all(primary),
           overlayColor:
-              WidgetStateProperty.all(primary.withOpacity(0.1)),
+              WidgetStateProperty.all(primary.withValues(alpha: 0.1)),
         ),
       ),
       iconTheme: const IconThemeData(color: AppColors.textPrimaryDark),

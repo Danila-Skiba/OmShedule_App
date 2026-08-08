@@ -22,6 +22,10 @@ class NewsRepositoryImpl extends NewsRepository {
   static final Uri _base = Uri.parse(newsUrl);
   static const Windows1251Codec _cp1251 = Windows1251Codec(allowInvalid: true);
 
+  /// Ограничение на запрос: у `package:http` таймаута по умолчанию нет,
+  /// и «повисший» ответ оставлял ленту в состоянии загрузки навсегда.
+  static const Duration _requestTimeout = Duration(seconds: 20);
+
   NewsRepositoryImpl({http.Client? client}) : client = client ?? http.Client();
 
   @override
@@ -34,7 +38,7 @@ class NewsRepositoryImpl extends NewsRepository {
               'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
           'Accept': 'text/html',
         },
-      );
+      ).timeout(_requestTimeout);
       if (response.statusCode != 200) {
         throw Exception('Failed to load news (status: ${response.statusCode})');
       }

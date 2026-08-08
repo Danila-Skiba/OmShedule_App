@@ -12,6 +12,10 @@ abstract class PrefsKeys {
   static const lastGroupId = 'last_group_id';
   static const lastTeacherId = 'last_teacher_id';
   static const lastAudienceId = 'last_audience_id';
+
+  /// Префикс времени последнего обновления справочника: к нему добавляется
+  /// ключ справочника (`groups`, `persons`, `auditories`).
+  static const directoryUpdatedAtPrefix = 'directory_updated_at_';
 }
 
 class SettingsService {
@@ -109,6 +113,24 @@ class SettingsService {
     } else {
       _prefs.setString(PrefsKeys.lastTeacherId, id);
     }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Обновление справочников
+  // ---------------------------------------------------------------------------
+
+  /// Когда справочник обновлялся в последний раз (null — ни разу).
+  static DateTime? getDirectoryUpdatedAt(String directoryKey) {
+    final raw =
+        _prefs.getString('${PrefsKeys.directoryUpdatedAtPrefix}$directoryKey');
+    return raw == null ? null : DateTime.tryParse(raw);
+  }
+
+  static void setDirectoryUpdatedAt(String directoryKey, DateTime at) {
+    _prefs.setString(
+      '${PrefsKeys.directoryUpdatedAtPrefix}$directoryKey',
+      at.toIso8601String(),
+    );
   }
 
   static String? getLastAudienceId() =>

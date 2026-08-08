@@ -1,7 +1,5 @@
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../constants/app_colors.dart';
-import '../core/utils/platform_utils.dart';
 import '../data/mock_data.dart';
 import '../models/building.dart';
 
